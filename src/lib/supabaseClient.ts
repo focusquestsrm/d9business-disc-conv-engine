@@ -19,4 +19,4 @@ export const supabase = isSupabaseConfigured
 
 export const supabaseStatusMessage = isSupabaseConfigured
   ? 'Supabase connection configured and ready for authenticated session management.'
-  : 'Supabase environment variables are not configured yet. Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before enabling live authentication.'
+  : 'Supabase environment variables are not configured yet. Configure VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY before enabling live authentication.'
