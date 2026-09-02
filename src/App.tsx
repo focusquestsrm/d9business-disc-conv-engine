@@ -481,7 +481,7 @@ function LoginPage({
 
           <div className="login-actions">
             <button type="button" className="login-secondary-link" aria-label="Forgot password is coming soon" disabled={loading}>
-              Forgot password?
+              Forgot password? (coming soon)
             </button>
           </div>
 

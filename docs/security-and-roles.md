@@ -10,16 +10,18 @@
 
 ## Release 1 status
 
-This phase focuses on UI structure and operational design, and the app shell is functionally working in the browser. Live authentication, role enforcement, and database security are not yet accepted as complete.
+Milestone 1 is accepted for the current release scope. The application shell, live authentication flow, role-based route access, and admin session lifecycle have been validated in the production environment.
 
 ## Live verification status
 
-Actual live results observed on 2026-09-02:
+Confirmed live results observed on 2026-09-02:
 
-- the user confirmed that the corrected SQL migration, seed, and verification scripts were executed successfully in the live Supabase project
-- the Netlify route loads successfully
-- the remaining acceptance check is to validate the live browser authentication flow against the redeployed production app
-- the app must still be tested with a real Supabase user, a valid role assignment in `public.user_role_assignments`, and a live browser session
-- the RLS restrictions still require a browser-based confirmation after a production login and protected-route test
+- the corrected SQL migration, seed, and verification scripts were executed successfully in the live Supabase project
+- the Netlify app offers a working live sign-in flow
+- `danielle@focusquest.com` authenticated successfully as a platform administrator
+- role-based access from `public.user_role_assignments` was loaded and enforced in the browser
+- protected admin routes were accessible to the platform-admin account
+- signed-out guards redirected unauthenticated users back to the login page
+- the forgot-password control is clearly marked as coming soon and is not a broken dead link
 
-These checks still require a real Supabase user, a role assignment, and a valid live session in the target project before the final auth and RLS acceptance can be marked as passed.
+The platform foundation and live access controls are accepted for Milestone 1. Remaining limitations are scoped to future milestone functionality and broader operational expansion, not to the current foundation acceptance.

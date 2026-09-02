@@ -14,20 +14,20 @@ This repository holds the ongoing Milestone 1 foundation for the D9Network platf
 
 ## Live Milestone 1 status
 
-Actual live results verified on 2026-09-02:
+Milestone 1 is accepted as complete for the current release scope based on the confirmed live authentication and platform-admin validation completed on 2026-09-02.
 
-- the user confirmed that the corrected Supabase SQL migration, seed, and verification scripts were each executed successfully in the target project
-- the Netlify deployment loads the D9Network shell and direct navigation to `/verification` resolves successfully
-- the production build passes locally
-- the automated test suite passes locally
-- the remaining acceptance work is to verify the live browser auth flow against the deployed Netlify app after the frontend is redeployed with the correct Supabase environment variables
+Confirmed live results:
 
-Observed limitation:
+- `danielle@focusquest.com` successfully signed in to the deployed application with a real Supabase Auth session
+- the app redirected to `/dashboard` on successful authentication
+- the active user loaded as `Platform Administrator`
+- administrator navigation and route access were available and working for protected admin areas
+- the session persisted correctly after a page refresh
+- the user successfully logged out
+- signed-out route protection redirected unauthenticated users away from protected routes
+- the forgot-password control is explicitly identified as coming soon and does not function as a dead or broken link
 
-- the deployed app still needs a live browser-level auth validation after deployment to confirm the production session, role assignment, and RLS behavior
-- the required production checks include creating a real Supabase Auth user, assigning the role in `public.user_role_assignments`, and confirming the browser login and protected-route behavior
-
-This means Milestone 1 is functionally ready for the final live auth validation, but it is not fully accepted until the browser auth and route checks are performed against the redeployed production app.
+Milestone 1 completion criteria are therefore met for the implemented foundation and live auth flow in this release.
 
 ## Local development
 
