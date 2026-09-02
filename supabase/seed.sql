@@ -127,6 +127,6 @@ VALUES
   ('f7777777-7777-5777-8777-777777777777', 'publishing_calendar', 'Publishing Calendar', 'Social Engagement', 'Milestone 5', 'planned', 'view_content_modules', 16, true),
   ('f8888888-8888-5888-8888-888888888888', 'social_performance', 'Social Performance', 'Social Engagement', 'Milestone 5', 'planned', 'view_content_modules', 17, true),
   ('f9999999-9999-5999-8999-999999999999', 'membership_handoffs', 'Membership Handoffs', 'Conversion and Growth', 'Milestone 6', 'planned', 'view_conversion_modules', 18, true),
-  ('g1111111-1111-6111-8111-111111111111', 'd9_intelligence_integration', 'D9 Intelligence Integration', 'Intelligence', 'Milestone 6', 'planned', 'view_executive_reporting', 19, true),
-  ('g2222222-2222-6222-8222-222222222222', 'executive_attribution_reporting', 'Executive Attribution Reporting', 'Intelligence', 'Milestone 7', 'planned', 'view_executive_reporting', 20, true)
+  ('91111111-1111-6111-8111-111111111111', 'd9_intelligence_integration', 'D9 Intelligence Integration', 'Intelligence', 'Milestone 6', 'planned', 'view_executive_reporting', 19, true),
+  ('92222222-2222-6222-8222-222222222222', 'executive_attribution_reporting', 'Executive Attribution Reporting', 'Intelligence', 'Milestone 7', 'planned', 'view_executive_reporting', 20, true)
 ON CONFLICT (module_code) DO NOTHING;

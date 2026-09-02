@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
-import { supabaseStatusMessage } from './lib/supabaseClient'
+import { isSupabaseConfigured, supabase, supabaseStatusMessage } from './lib/supabaseClient'
 
 type NavItem = {
   label: string
@@ -40,6 +40,14 @@ type NavGroup = {
   items: NavItem[]
 }
 
+type SessionUser = {
+  id: string
+  email: string
+  full_name: string
+  roleCode: string | null
+  roleDisplayName: string
+}
+
 const navGroups: NavGroup[] = [
   { label: 'Overview', items: [{ label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' }, { label: 'Work Queue', icon: CircleDashed, to: '/queue' }] },
   { label: 'Discovery', items: [{ label: 'Prospects', icon: Users, to: '/prospects', future: true }, { label: 'Businesses', icon: Building2, to: '/businesses', future: true }, { label: 'Campaigns', icon: Megaphone, to: '/campaigns' }, { label: 'Nominations', icon: ArrowRight, to: '/nominations', future: true }, { label: 'Imports', icon: FileText, to: '/imports', future: true }] },
@@ -50,11 +58,448 @@ const navGroups: NavGroup[] = [
   { label: 'System', items: [{ label: 'Users and Roles', icon: Users, to: '/admin/users', requiresAdmin: true }, { label: 'Social Connections', icon: Users, to: '/social-connections', future: true }, { label: 'Integrations', icon: FileText, to: '/integrations' }, { label: 'Workflow Rules', icon: CircleDashed, to: '/workflow-rules', future: true }, { label: 'Organization Settings', icon: Building2, to: '/organization-settings' }, { label: 'Audit Log', icon: FileText, to: '/audit-log' }] },
 ]
 
-const appUser = { name: 'Tina Morgan', role: 'Platform Administrator' }
-
 function AppRoot() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [session, setSession] = useState<any>(null)
+  const [authUser, setAuthUser] = useState<SessionUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [signingIn, setSigningIn] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
+  useEffect(() => {
+    const client = supabase
+    if (!client) {
+      setSession(null)
+      setAuthUser(null)
+      setAuthLoading(false)
+      return
+    }
+
+    let isMounted = true
+
+    const syncSession = async () => {
+      const { data, error } = await client.auth.getSession()
+      if (!isMounted) return
+
+      if (error) {
+        setAuthError(error.message)
+      }
+
+      setSession(data.session ?? null)
+      setAuthLoading(false)
+    }
+
+    syncSession()
+
+    const { data: authListener } = client.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) return
+
+      setSession(nextSession)
+      setAuthError(null)
+      setLoginError(null)
+    })
+
+    return () => {
+      isMounted = false
+      authListener.subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!supabase || !session?.user?.id) {
+      setAuthUser(null)
+      return
+    }
+
+    let isMounted = true
+
+    const loadActiveRole = async () => {
+      const client = supabase
+      if (!client) return
+
+      const { data: assignments, error: assignmentError } = await client
+        .from('user_role_assignments')
+        .select('role_id')
+        .eq('user_id', session.user.id)
+        .eq('is_active', true)
+
+      if (!isMounted) return
+
+      if (assignmentError) {
+        setAuthError(assignmentError.message)
+        setAuthUser({
+          id: session.user.id,
+          email: session.user.email ?? 'Unknown user',
+          full_name: session.user.user_metadata?.full_name ?? session.user.email ?? 'Staff member',
+          roleCode: null,
+          roleDisplayName: 'No active role assigned',
+        })
+        return
+      }
+
+      const roleIds = (assignments ?? []).map((row: any) => row.role_id).filter(Boolean)
+
+      if (!roleIds.length) {
+        setAuthUser({
+          id: session.user.id,
+          email: session.user.email ?? 'Unknown user',
+          full_name: session.user.user_metadata?.full_name ?? session.user.email ?? 'Staff member',
+          roleCode: null,
+          roleDisplayName: 'No active role assigned',
+        })
+        return
+      }
+
+      const { data: roleRows, error: roleError } = await client
+        .from('roles')
+        .select('code, display_name')
+        .in('id', roleIds)
+
+      if (!isMounted) return
+
+      if (roleError) {
+        setAuthError(roleError.message)
+        setAuthUser({
+          id: session.user.id,
+          email: session.user.email ?? 'Unknown user',
+          full_name: session.user.user_metadata?.full_name ?? session.user.email ?? 'Staff member',
+          roleCode: null,
+          roleDisplayName: 'Role lookup failed',
+        })
+        return
+      }
+
+      const activeRole = roleRows?.[0]
+      setAuthUser({
+        id: session.user.id,
+        email: session.user.email ?? 'Unknown user',
+        full_name: session.user.user_metadata?.full_name ?? session.user.email ?? 'Staff member',
+        roleCode: activeRole?.code ?? null,
+        roleDisplayName: activeRole?.display_name ?? 'No active role assigned',
+      })
+    }
+
+    loadActiveRole()
+
+    return () => {
+      isMounted = false
+    }
+  }, [session])
+
+  const isAuthenticated = Boolean(session)
+  const isPlatformAdmin = authUser?.roleCode === 'platform_admin'
+  const userDisplayName = authUser?.full_name || session?.user?.email || 'Staff member'
+  const userRoleDisplay = authUser?.roleDisplayName || 'No active role assigned'
+
+  const handleSignIn = async (email: string, password: string) => {
+    if (!supabase) {
+      setLoginError('Supabase is not configured for this deployment.')
+      return
+    }
+
+    setSigningIn(true)
+    setLoginError(null)
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    setSigningIn(false)
+
+    if (error) {
+      setLoginError(error.message || 'Invalid email or password.')
+      return
+    }
+
+    setSession(data.session)
+  }
+
+  const handleSignOut = async () => {
+    if (!supabase) return
+
+    setSigningOut(true)
+    const { error } = await supabase.auth.signOut()
+    setSigningOut(false)
+
+    if (error) {
+      setAuthError(error.message)
+      return
+    }
+
+    setSession(null)
+    setAuthUser(null)
+    setLoginError(null)
+  }
+
+  const normalizedRoutes = navGroups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.requiresAdmin || isPlatformAdmin),
+  }))
+
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
+      <Route
+        path="/login"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <LoginPage
+              isConfigured={isSupabaseConfigured}
+              loading={authLoading || signingIn}
+              error={loginError || authError}
+              onSignIn={handleSignIn}
+            />
+          )
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell
+              navGroups={normalizedRoutes}
+              userDisplayName={userDisplayName}
+              userRoleDisplay={userRoleDisplay}
+              mobileNavOpen={mobileNavOpen}
+              setMobileNavOpen={setMobileNavOpen}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
+            >
+              <DashboardPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/queue"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <QueuePage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/campaigns"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <CampaignPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/verification"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <PlaceholderPage moduleName="D9 Verification" purpose="Review and confirm D9 connection submissions and organization-aware public language approval before moving records toward conversion and membership steps." milestone="Milestone 3" relatedSystem="Verification reviewer workflow and consent ledger" />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/prospects"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <PlaceholderPage moduleName="Prospects" purpose="Create and manage prospect intake, matching, and routing for discovery and conversion workflows." milestone="Milestone 2" relatedSystem="Prospect intake and operator queue" />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/integrations"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <IntegrationsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organization-settings"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={true}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <SettingsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/audit-log"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={true}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <AuditPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={true}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <UsersAndRolesPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/admin" element={<Navigate to={isPlatformAdmin ? '/admin/users' : '/unauthorized'} replace />} />
+      <Route path="/unauthorized" element={<UnauthorizedPage />} />
+      <Route path="/404" element={<NotFoundPage />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  )
+}
+
+function ProtectedRoute({
+  isAuthenticated,
+  authLoading,
+  isPlatformAdmin,
+  requireAdmin,
+  children,
+}: {
+  isAuthenticated: boolean
+  authLoading: boolean
+  isPlatformAdmin: boolean
+  requireAdmin: boolean
+  children: React.ReactNode
+}) {
+  if (authLoading) {
+    return <LoadingPage />
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (requireAdmin && !isPlatformAdmin) {
+    return <Navigate to="/unauthorized" replace />
+  }
+
+  return children
+}
+
+function LoadingPage() {
+  return (
+    <div className="page auth-page">
+      <div className="panel auth-card loading-card">
+        <div className="brand-mark large" aria-label="D9Network">D9</div>
+        <h1>Loading D9Network</h1>
+        <p className="auth-copy">Restoring your secure session and platform access.</p>
+      </div>
+    </div>
+  )
+}
+
+function LoginPage({
+  isConfigured,
+  loading,
+  error,
+  onSignIn,
+}: {
+  isConfigured: boolean
+  loading: boolean
+  error: string | null
+  onSignIn: (email: string, password: string) => Promise<void>
+}) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+
+    if (!email || !password) {
+      return
+    }
+
+    await onSignIn(email, password)
+  }
+
+  return (
+    <div className="page auth-page">
+      <div className="panel auth-card">
+        <div className="brand-mark large" aria-label="D9Network">D9</div>
+        <h1>Sign in to D9Network</h1>
+        <p className="auth-copy">Access the workspace, platform controls, and role-aware operational routing.</p>
+
+        {!isConfigured && (
+          <div className="status-box error-box">
+            <strong>Configuration status</strong>
+            <span>{supabaseStatusMessage}</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="status-box error-box" role="alert">
+            <strong>Unable to sign in</strong>
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form className="auth-form" onSubmit={submit}>
+          <label className="auth-field">
+            <span>Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="name@company.com"
+              autoComplete="email"
+              disabled={!isConfigured || loading}
+              required
+            />
+          </label>
+
+          <label className="auth-field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              disabled={!isConfigured || loading}
+              required
+            />
+          </label>
+
+          <button type="submit" className="primary-button auth-submit" disabled={!isConfigured || loading || !email || !password}>
+            {loading ? 'Signing in...' : 'Continue with Supabase'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function AuthenticatedAppShell({
+  navGroups,
+  userDisplayName,
+  userRoleDisplay,
+  mobileNavOpen,
+  setMobileNavOpen,
+  onSignOut,
+  signingOut,
+  children,
+}: {
+  navGroups: NavGroup[]
+  userDisplayName: string
+  userRoleDisplay: string
+  mobileNavOpen: boolean
+  setMobileNavOpen: (value: boolean) => void
+  onSignOut: () => Promise<void>
+  signingOut: boolean
+  children: React.ReactNode
+}) {
   return (
     <div className="app-shell">
       <button type="button" className="mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileNavOpen(true)}>
@@ -109,54 +554,19 @@ function AppRoot() {
             <button type="button" className="primary-button">Coming in Milestone 2</button>
           </div>
           <div className="user-menu">
-            <div className="user-avatar">TM</div>
+            <div className="user-avatar">{userDisplayName.slice(0, 2).toUpperCase()}</div>
             <div className="user-meta">
-              <strong>{appUser.name}</strong>
-              <span>{appUser.role}</span>
+              <strong>{userDisplayName}</strong>
+              <span>{userRoleDisplay}</span>
             </div>
-            <button type="button" className="icon-button" aria-label="Log out">
+            <button type="button" className="icon-button" aria-label="Log out" onClick={() => void onSignOut()} disabled={signingOut}>
               <LogOut size={16} />
             </button>
           </div>
         </header>
 
-        <div className="page-shell">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/queue" element={<QueuePage />} />
-            <Route path="/campaigns" element={<CampaignPage />} />
-            <Route path="/verification" element={<PlaceholderPage moduleName="D9 Verification" purpose="Review and confirm D9 connection submissions and organization-aware public language approval before moving records toward conversion and membership steps." milestone="Milestone 3" relatedSystem="Verification reviewer workflow and consent ledger" />} />
-            <Route path="/prospects" element={<PlaceholderPage moduleName="Prospects" purpose="Create and manage prospect intake, matching, and routing for discovery and conversion workflows." milestone="Milestone 2" relatedSystem="Prospect intake and operator queue" />} />
-            <Route path="/integrations" element={<IntegrationsPage />} />
-            <Route path="/organization-settings" element={<SettingsPage />} />
-            <Route path="/audit-log" element={<AuditPage />} />
-            <Route path="/admin/users" element={<UsersAndRolesPage />} />
-            <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
-            <Route path="/unauthorized" element={<UnauthorizedPage />} />
-            <Route path="/404" element={<NotFoundPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </div>
+        <div className="page-shell">{children}</div>
       </main>
-    </div>
-  )
-}
-
-function LoginPage() {
-  return (
-    <div className="page auth-page">
-      <div className="panel auth-card">
-        <div className="brand-mark large" aria-label="D9Network">D9</div>
-        <h1>Sign in to D9Network</h1>
-        <p className="auth-copy">Supabase authentication is ready to be enabled when the project environment is configured. Until then, this app remains in a protected placeholder state.</p>
-        <div className="status-box">
-          <strong>Configuration status</strong>
-          <span>{supabaseStatusMessage}</span>
-        </div>
-        <button type="button" className="primary-button" disabled>Continue with Supabase</button>
-      </div>
     </div>
   )
 }
