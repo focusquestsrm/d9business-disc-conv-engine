@@ -44,7 +44,7 @@ describe('App', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /sign in to d9network/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument()
     })
   })
 

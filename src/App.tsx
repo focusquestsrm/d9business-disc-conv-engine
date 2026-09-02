@@ -195,7 +195,7 @@ function AppRoot() {
 
   const handleSignIn = async (email: string, password: string) => {
     if (!supabase) {
-      setLoginError('Supabase is not configured for this deployment.')
+      setLoginError('Authentication is temporarily unavailable. Please contact your administrator.')
       return
     }
 
@@ -425,28 +425,35 @@ function LoginPage({
   }
 
   return (
-    <div className="page auth-page">
-      <div className="panel auth-card">
-        <div className="brand-mark large" aria-label="D9Network">D9</div>
-        <h1>Sign in to D9Network</h1>
-        <p className="auth-copy">Access the workspace, platform controls, and role-aware operational routing.</p>
+    <div className="login-page-shell">
+      <div className="login-backdrop" aria-hidden="true" />
+
+      <div className="login-card" role="main">
+        <div className="login-brand" aria-label="D9Network logo">
+          <img src="/images/d9network-logo.png" alt="D9Network" className="login-logo" />
+        </div>
+
+        <div className="login-header">
+          <h1>Welcome back</h1>
+          <p>Sign in to manage business discovery, verification, outreach, and growth opportunities.</p>
+        </div>
 
         {!isConfigured && (
-          <div className="status-box error-box">
-            <strong>Configuration status</strong>
-            <span>{supabaseStatusMessage}</span>
+          <div className="login-alert" role="alert">
+            <strong>Authentication unavailable</strong>
+            <span>Authentication is temporarily unavailable. Please contact your administrator.</span>
           </div>
         )}
 
         {error && (
-          <div className="status-box error-box" role="alert">
-            <strong>Unable to sign in</strong>
+          <div className="login-alert login-alert-error" role="alert">
+            <strong>Sign in failed</strong>
             <span>{error}</span>
           </div>
         )}
 
-        <form className="auth-form" onSubmit={submit}>
-          <label className="auth-field">
+        <form className="login-form" onSubmit={submit}>
+          <label className="login-field">
             <span>Email</span>
             <input
               type="email"
@@ -459,7 +466,7 @@ function LoginPage({
             />
           </label>
 
-          <label className="auth-field">
+          <label className="login-field">
             <span>Password</span>
             <input
               type="password"
@@ -472,10 +479,18 @@ function LoginPage({
             />
           </label>
 
-          <button type="submit" className="primary-button auth-submit" disabled={!isConfigured || loading || !email || !password}>
-            {loading ? 'Signing in...' : 'Continue with Supabase'}
+          <div className="login-actions">
+            <button type="button" className="login-secondary-link" aria-label="Forgot password is coming soon" disabled={loading}>
+              Forgot password?
+            </button>
+          </div>
+
+          <button type="submit" className="primary-button login-submit" disabled={!isConfigured || loading || !email || !password}>
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
+
+        <footer className="login-footer">D9Network Business Discovery &amp; Conversion Engine</footer>
       </div>
     </div>
   )
