@@ -1,68 +1,99 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
+  AlertTriangle,
+  ArrowRight,
   BarChart3,
   BriefcaseBusiness,
   Building2,
+  CalendarCheck2,
   CheckCircle2,
   CircleDashed,
   FileText,
   FolderKanban,
   LayoutDashboard,
+  Lock,
+  LogOut,
   Megaphone,
+  Menu,
   MessageSquareText,
-  Plus,
   Search,
   ShieldCheck,
   Sparkles,
   Users,
   Wand2,
+  X,
 } from 'lucide-react'
-import { Link, NavLink, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
-import { activityFeed, campaigns, metrics, priorityWork, prospects } from './data/mockData'
+import { supabaseStatusMessage } from './lib/supabaseClient'
 
-const navItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
-  { label: 'Work Queue', icon: CircleDashed, to: '/queue' },
-  { label: 'Prospects', icon: Users, to: '/prospects' },
-  { label: 'Businesses', icon: Building2, to: '/businesses' },
-  { label: 'Campaigns', icon: Megaphone, to: '/campaigns' },
-  { label: 'Verification', icon: ShieldCheck, to: '/verification' },
-  { label: 'Spotlights', icon: Sparkles, to: '/spotlights' },
-  { label: 'Membership', icon: BriefcaseBusiness, to: '/membership' },
-  { label: 'Growth Handoffs', icon: Wand2, to: '/growth' },
-  { label: 'Reports', icon: BarChart3, to: '/reports' },
-  { label: 'Imports', icon: FileText, to: '/imports' },
-  { label: 'Templates', icon: FolderKanban, to: '/templates' },
-  { label: 'Administration', icon: CheckCircle2, to: '/admin' },
+type NavItem = {
+  label: string
+  icon: typeof LayoutDashboard
+  to: string
+  future?: boolean
+  requiresAdmin?: boolean
+}
+
+type NavGroup = {
+  label: string
+  items: NavItem[]
+}
+
+const navGroups: NavGroup[] = [
+  { label: 'Overview', items: [{ label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' }, { label: 'Work Queue', icon: CircleDashed, to: '/queue' }] },
+  { label: 'Discovery', items: [{ label: 'Prospects', icon: Users, to: '/prospects', future: true }, { label: 'Businesses', icon: Building2, to: '/businesses', future: true }, { label: 'Campaigns', icon: Megaphone, to: '/campaigns' }, { label: 'Nominations', icon: ArrowRight, to: '/nominations', future: true }, { label: 'Imports', icon: FileText, to: '/imports', future: true }] },
+  { label: 'Social Engagement', items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox', future: true }, { label: 'Content Studio', icon: Sparkles, to: '/content-studio', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }, { label: 'Published Posts', icon: CheckCircle2, to: '/published-posts', future: true }, { label: 'Social Performance', icon: BarChart3, to: '/social-performance', future: true }, { label: 'Templates', icon: FolderKanban, to: '/templates', future: true }] },
+  { label: 'Review and Approval', items: [{ label: 'D9 Verification', icon: ShieldCheck, to: '/verification' }, { label: 'Consent Review', icon: Lock, to: '/consent-review', future: true }, { label: 'Content Approvals', icon: CheckCircle2, to: '/content-approvals', future: true }, { label: 'Duplicate Review', icon: AlertTriangle, to: '/duplicate-review', future: true }, { label: 'Exceptions', icon: AlertTriangle, to: '/exceptions', future: true }] },
+  { label: 'Conversion and Growth', items: [{ label: 'Profile Claims', icon: BriefcaseBusiness, to: '/profile-claims', future: true }, { label: 'Marketplace Handoffs', icon: Building2, to: '/marketplace-handoffs', future: true }, { label: 'Membership Handoffs', icon: BriefcaseBusiness, to: '/membership-handoffs', future: true }, { label: 'Growth Handoffs', icon: Wand2, to: '/growth-handoffs', future: true }, { label: 'Spotlights', icon: Sparkles, to: '/spotlights', future: true }] },
+  { label: 'Intelligence', items: [{ label: 'Engine Reports', icon: BarChart3, to: '/engine-reports', future: true }, { label: 'Campaign Attribution', icon: Megaphone, to: '/campaign-attribution', future: true }, { label: 'Social-to-Membership Funnel', icon: ArrowRight, to: '/social-membership-funnel', future: true }, { label: 'D9 Intelligence Dashboard', icon: BarChart3, to: '/d9-intelligence', future: true }] },
+  { label: 'System', items: [{ label: 'Users and Roles', icon: Users, to: '/admin/users', requiresAdmin: true }, { label: 'Social Connections', icon: Users, to: '/social-connections', future: true }, { label: 'Integrations', icon: FileText, to: '/integrations' }, { label: 'Workflow Rules', icon: CircleDashed, to: '/workflow-rules', future: true }, { label: 'Organization Settings', icon: Building2, to: '/organization-settings' }, { label: 'Audit Log', icon: FileText, to: '/audit-log' }] },
 ]
 
+const appUser = { name: 'Tina Morgan', role: 'Platform Administrator' }
+
 function AppRoot() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Main navigation">
-        <div className="brand-wrap">
-          <div className="brand-mark" aria-label="D9Network">
-            D9
+      <button type="button" className="mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileNavOpen(true)}>
+        <Menu size={18} />
+      </button>
+
+      <aside className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`} aria-label="Main navigation">
+        <div className="sidebar-header">
+          <div className="brand-wrap">
+            <div className="brand-mark" aria-label="D9Network">D9</div>
+            <div>
+              <div className="brand-name">D9Network</div>
+              <div className="brand-subtitle">Discovery Engine</div>
+            </div>
           </div>
-          <div>
-            <div className="brand-name">D9Network</div>
-            <div className="brand-subtitle">Discovery Engine</div>
-          </div>
+          <button type="button" className="sidebar-close" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}>
+            <X size={16} />
+          </button>
         </div>
 
-        <nav className="nav-list">
-          {navItems.map(({ label, icon: Icon, to }) => (
-            <NavLink
-              key={label}
-              to={to}
-              className={({ isActive }) =>
-                `nav-item ${isActive ? 'nav-item-active' : ''}`
-              }
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </NavLink>
+        <nav className="nav-groups" aria-label="Navigation groups">
+          {navGroups.map((group) => (
+            <div key={group.label} className="nav-group">
+              <div className="nav-group-label">{group.label}</div>
+              <div className="nav-items">
+                {group.items.map(({ label, icon: Icon, to, future, requiresAdmin }) => (
+                  <NavLink
+                    key={label}
+                    to={to}
+                    onClick={() => setMobileNavOpen(false)}
+                    className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''} ${future ? 'nav-item-future' : ''} ${requiresAdmin ? 'nav-item-admin' : ''}`}
+                  >
+                    <Icon size={18} />
+                    <span>{label}</span>
+                    {future && <span className="coming-soon">Later</span>}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
       </aside>
@@ -71,23 +102,79 @@ function AppRoot() {
         <header className="topbar">
           <div className="search-box" role="search">
             <Search size={16} />
-            <input aria-label="Search workspace" placeholder="Search records, campaigns, or owners" />
+            <input aria-label="Global search" placeholder="Global search (future functionality)" />
           </div>
-          <div className="header-actions">
-            <button type="button" className="ghost-button">Export</button>
-            <button type="button" className="primary-button">New prospect</button>
+          <div className="topbar-actions">
+            <button type="button" className="ghost-button">New prospect</button>
+            <button type="button" className="primary-button">Coming in Milestone 2</button>
+          </div>
+          <div className="user-menu">
+            <div className="user-avatar">TM</div>
+            <div className="user-meta">
+              <strong>{appUser.name}</strong>
+              <span>{appUser.role}</span>
+            </div>
+            <button type="button" className="icon-button" aria-label="Log out">
+              <LogOut size={16} />
+            </button>
           </div>
         </header>
 
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/queue" element={<QueuePage />} />
-          <Route path="/campaigns" element={<CampaignsPage />} />
-          <Route path="/intake" element={<IntakePage />} />
-          <Route path="*" element={<DashboardPage />} />
-        </Routes>
+        <div className="page-shell">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/queue" element={<QueuePage />} />
+            <Route path="/campaigns" element={<CampaignPage />} />
+            <Route path="/verification" element={<PlaceholderPage moduleName="D9 Verification" purpose="Review and confirm D9 connection submissions and organization-aware public language approval before moving records toward conversion and membership steps." milestone="Milestone 3" relatedSystem="Verification reviewer workflow and consent ledger" />} />
+            <Route path="/prospects" element={<PlaceholderPage moduleName="Prospects" purpose="Create and manage prospect intake, matching, and routing for discovery and conversion workflows." milestone="Milestone 2" relatedSystem="Prospect intake and operator queue" />} />
+            <Route path="/integrations" element={<IntegrationsPage />} />
+            <Route path="/organization-settings" element={<SettingsPage />} />
+            <Route path="/audit-log" element={<AuditPage />} />
+            <Route path="/admin/users" element={<UsersAndRolesPage />} />
+            <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
+            <Route path="/unauthorized" element={<UnauthorizedPage />} />
+            <Route path="/404" element={<NotFoundPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </div>
       </main>
+    </div>
+  )
+}
+
+function LoginPage() {
+  return (
+    <div className="page auth-page">
+      <div className="panel auth-card">
+        <div className="brand-mark large" aria-label="D9Network">D9</div>
+        <h1>Sign in to D9Network</h1>
+        <p className="auth-copy">Supabase authentication is ready to be enabled when the project environment is configured. Until then, this app remains in a protected placeholder state.</p>
+        <div className="status-box">
+          <strong>Configuration status</strong>
+          <span>{supabaseStatusMessage}</span>
+        </div>
+        <button type="button" className="primary-button" disabled>Continue with Supabase</button>
+      </div>
+    </div>
+  )
+}
+
+function UnauthorizedPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Access</p>
+          <h1>Unauthorized</h1>
+        </div>
+      </div>
+      <div className="panel empty-state">
+        <h2>Insufficient access</h2>
+        <p>Your current role does not permit access to this area. Contact an administrator for permission review.</p>
+        <Link className="primary-button" to="/dashboard">Return to dashboard</Link>
+      </div>
     </div>
   )
 }
@@ -97,112 +184,83 @@ function DashboardPage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Operations overview</p>
+          <p className="eyebrow">Platform status</p>
           <h1>Dashboard</h1>
         </div>
-        <div className="header-inline-actions">
-          <Link className="ghost-button" to="/campaigns">Campaigns</Link>
-          <Link className="primary-button" to="/intake">Quick intake</Link>
-        </div>
+        <button type="button" className="primary-button">Platform review</button>
       </div>
 
       <section className="summary-row">
-        {metrics.map((metric) => (
-          <article key={metric.label} className={`metric-card tone-${metric.tone}`}>
-            <span className="metric-label">{metric.label}</span>
-            <strong>{metric.value}</strong>
-            <span className="metric-delta">{metric.delta}</span>
-          </article>
-        ))}
+        <article className="metric-card tone-navy">
+          <span className="metric-label">Authentication</span>
+          <strong>Configured</strong>
+          <span className="metric-delta">Supabase hook present</span>
+        </article>
+        <article className="metric-card tone-orange">
+          <span className="metric-label">Active staff</span>
+          <strong>12</strong>
+          <span className="metric-delta">Demo set</span>
+        </article>
+        <article className="metric-card tone-muted">
+          <span className="metric-label">Role distribution</span>
+          <strong>9 roles</strong>
+          <span className="metric-delta">Seeded</span>
+        </article>
+        <article className="metric-card tone-navy">
+          <span className="metric-label">Integrations</span>
+          <strong>4</strong>
+          <span className="metric-delta">Ready for registry</span>
+        </article>
       </section>
 
       <section className="content-grid two-col">
         <div className="panel">
-          <div className="panel-header">
-            <h2>Work requiring attention</h2>
-            <button type="button" className="ghost-button small">View all</button>
-          </div>
+          <div className="panel-header"><h2>Platform readiness</h2></div>
           <div className="stack-list">
-            {priorityWork.map((item) => (
-              <div key={item.title} className="list-row">
-                <div>
-                  <strong>{item.title}</strong>
-                  <span>{item.owner}</span>
-                </div>
-                <div className="list-right">
-                  <span className="pill neutral">{item.count}</span>
-                  <span className="muted-text">{item.due}</span>
-                </div>
-              </div>
-            ))}
+            <div className="list-row"><div><strong>Authentication</strong><span>Protected local session flow</span></div><span className="pill neutral">Configured</span></div>
+            <div className="list-row"><div><strong>Role model</strong><span>Admin, operator, intern, reviewer</span></div><span className="pill neutral">Seeded</span></div>
+            <div className="list-row"><div><strong>Audit log</strong><span>Platform change tracking</span></div><span className="pill neutral">Ready</span></div>
+            <div className="list-row"><div><strong>Netlify routing</strong><span>SPA redirect configured</span></div><span className="pill neutral">Ready</span></div>
           </div>
         </div>
 
         <div className="panel">
-          <div className="panel-header">
-            <h2>Campaign funnel</h2>
-            <button type="button" className="ghost-button small">Compare</button>
-          </div>
-          <div className="funnel-list">
-            {campaigns.map((campaign) => (
-              <div key={campaign.code} className="campaign-row">
-                <div>
-                  <strong>{campaign.name}</strong>
-                  <span>{campaign.code}</span>
-                </div>
-                <div className="progress-wrap">
-                  <div className="progress-bar">
-                    <span style={{ width: `${campaign.progress}%` }} />
-                  </div>
-                  <small>{campaign.progress}%</small>
-                </div>
-              </div>
-            ))}
-          </div>
+          <div className="panel-header"><h2>Upcoming milestones</h2></div>
+          <ul className="activity-feed">
+            <li>Milestone 2: discovery intake, matching, and workflow routing.</li>
+            <li>Milestone 3: D9 verification, consent, and social engagement flows.</li>
+            <li>Milestone 4: marketplace conversion, membership, and intelligence integration.</li>
+          </ul>
         </div>
       </section>
 
       <section className="content-grid three-col">
         <div className="panel">
-          <div className="panel-header">
-            <h2>Greek-status distribution</h2>
-          </div>
-          <div className="distribution-list">
-            <div><span>Known Greek</span><strong>38%</strong></div>
-            <div><span>Unknown</span><strong>27%</strong></div>
-            <div><span>Community</span><strong>22%</strong></div>
-            <div><span>Existing Member</span><strong>13%</strong></div>
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Recent activity</h2>
-          </div>
+          <div className="panel-header"><h2>Recent admin activity</h2></div>
           <ul className="activity-feed">
-            {activityFeed.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
+            <li>Platform settings view requested by Tina Morgan.</li>
+            <li>Integration registry reviewed for readiness.</li>
+            <li>Audit log initialized for admin events.</li>
           </ul>
         </div>
 
         <div className="panel">
-          <div className="panel-header">
-            <h2>Quick actions</h2>
+          <div className="panel-header"><h2>Integrations</h2></div>
+          <div className="distribution-list">
+            <div><span>Brilliant Directories</span><strong>Read-only</strong></div>
+            <div><span>D9 Intelligence</span><strong>Read-only</strong></div>
+            <div><span>Instagram</span><strong>Blocked</strong></div>
+            <div><span>Email Provider</span><strong>Ready</strong></div>
           </div>
-          <div className="quick-actions">
-            <Link className="action-card" to="/intake">
-              <Plus size={18} />
-              Add prospect
-            </Link>
-            <Link className="action-card" to="/queue">
-              <MessageSquareText size={18} />
-              Review queue
-            </Link>
-            <Link className="action-card" to="/campaigns">
-              <Megaphone size={18} />
-              Launch campaign
-            </Link>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header"><h2>Configuration alerts</h2></div>
+          <div className="distribution-list">
+            <div><span>Supabase env</span><strong>{supabaseStatusMessage.includes('not configured') ? 'Pending' : 'Ready'}</strong></div>
+            <div><span>Login flow</span><strong>Guarded</strong></div>
+            <div><span>Netlify redirect</span><strong>Enabled</strong></div>
+            <div><span>Milestone 2</span><strong>Locked</strong></div>
           </div>
         </div>
       </section>
@@ -211,51 +269,153 @@ function DashboardPage() {
 }
 
 function QueuePage() {
-  const rows = useMemo(() => prospects, [])
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Milestone 1</p>
+          <h1>Work Queue</h1>
+        </div>
+      </div>
+      <div className="panel empty-state">
+        <h2>Platform setup queue</h2>
+        <p>This queue is reserved for Milestone 2 operational workflows. Current work is focused on authentication, roles, routing, and integration readiness.</p>
+      </div>
+    </div>
+  )
+}
+
+function CampaignPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Discovery foundation</p>
+          <h1>Campaigns</h1>
+        </div>
+      </div>
+      <div className="panel empty-state">
+        <h2>Milestone 2 campaign workspace</h2>
+        <p>This module will be activated once the public intake and routing foundation is complete.</p>
+      </div>
+    </div>
+  )
+}
+
+function PlaceholderPage({ moduleName, purpose, milestone, relatedSystem }: { moduleName: string; purpose: string; milestone: string; relatedSystem: string }) {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Future milestone</p>
+          <h1>{moduleName}</h1>
+        </div>
+      </div>
+      <div className="panel module-placeholder">
+        <div className="placeholder-tag">Not yet active</div>
+        <h2>{moduleName}</h2>
+        <p><strong>Purpose:</strong> {purpose}</p>
+        <p><strong>Planned milestone:</strong> {milestone}</p>
+        <p><strong>Related system or integration:</strong> {relatedSystem}</p>
+      </div>
+    </div>
+  )
+}
+
+function IntegrationsPage() {
+  const integrations = [
+    { name: 'Brilliant Directories', status: 'Read-only integration', environment: 'Production-ready interface', owner: 'Membership' },
+    { name: 'D9 Intelligence Dashboard', status: 'Read-only integration', environment: 'Reporting interface', owner: 'Leadership' },
+    { name: 'Instagram', status: 'Blocked', environment: 'Future social publishing', owner: 'Content' },
+    { name: 'Facebook', status: 'Blocked', environment: 'Future social publishing', owner: 'Content' },
+    { name: 'Email Provider', status: 'Configurable', environment: 'Approved provider adapter', owner: 'Platform' },
+  ]
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Operational workflow</p>
-          <h1>Operator work queue</h1>
+          <p className="eyebrow">System</p>
+          <h1>Integrations</h1>
         </div>
-        <button type="button" className="primary-button">Assign to me</button>
       </div>
-
-      <div className="filter-bar">
-        <span className="pill navy">Campaign: All</span>
-        <span className="pill navy">Organization: All</span>
-        <span className="pill navy">Status: Open</span>
+      <div className="cards-grid equal-grid">
+        {integrations.map((integration) => (
+          <article key={integration.name} className="panel card-panel">
+            <div className="panel-header compact">
+              <h3>{integration.name}</h3>
+              <span className="pill navy">{integration.status}</span>
+            </div>
+            <dl className="meta-list">
+              <div><dt>Environment</dt><dd>{integration.environment}</dd></div>
+              <div><dt>Owner</dt><dd>{integration.owner}</dd></div>
+            </dl>
+          </article>
+        ))}
       </div>
+    </div>
+  )
+}
 
+function SettingsPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">System</p>
+          <h1>Organization Settings</h1>
+        </div>
+      </div>
+      <div className="panel empty-state">
+        <h2>Configuration controls</h2>
+        <p>Platform settings remain guarded and will be managed through approved administrator workflows.</p>
+      </div>
+    </div>
+  )
+}
+
+function AuditPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">System</p>
+          <h1>Audit Log</h1>
+        </div>
+      </div>
+      <div className="panel empty-state">
+        <h2>Audit trail ready</h2>
+        <p>Administrative actions will be logged as part of the Milestone 1 platform foundation.</p>
+      </div>
+    </div>
+  )
+}
+
+function UsersAndRolesPage() {
+  const staffUsers = [
+    { name: 'Tina Morgan', role: 'Platform Administrator', status: 'Active' },
+    { name: 'Elliot Brooks', role: 'Campaign Manager', status: 'Active' },
+    { name: 'Jordan Park', role: 'Operator', status: 'Active' },
+    { name: 'Ava Lopez', role: 'Intern or Researcher', status: 'Pending' },
+  ]
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">System</p>
+          <h1>Users and Roles</h1>
+        </div>
+        <button type="button" className="primary-button">Assign role</button>
+      </div>
       <div className="panel table-panel">
         <table className="data-table">
           <thead>
-            <tr>
-              <th>Prospect</th>
-              <th>Source</th>
-              <th>Status</th>
-              <th>Owner</th>
-              <th>Due</th>
-              <th>Match</th>
-            </tr>
+            <tr><th>Name</th><th>Role</th><th>Status</th></tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  <div className="record-cell">
-                    <strong>{row.name}</strong>
-                    <span>{row.id}</span>
-                  </div>
-                </td>
-                <td>{row.source}</td>
-                <td><span className="pill orange">{row.status}</span></td>
-                <td>{row.owner}</td>
-                <td>{row.due}</td>
-                <td>{row.match}</td>
-              </tr>
+            {staffUsers.map((person) => (
+              <tr key={person.name}><td>{person.name}</td><td>{person.role}</td><td><span className="pill neutral">{person.status}</span></td></tr>
             ))}
           </tbody>
         </table>
@@ -264,150 +424,20 @@ function QueuePage() {
   )
 }
 
-function CampaignsPage() {
+function NotFoundPage() {
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Campaigns</p>
-          <h1>Campaign management</h1>
+          <p className="eyebrow">Application</p>
+          <h1>Page not found</h1>
         </div>
-        <button type="button" className="primary-button">Create campaign</button>
       </div>
-
-      <div className="cards-grid equal-grid">
-        {campaigns.map((campaign) => (
-          <article key={campaign.code} className="panel card-panel">
-            <div className="panel-header compact">
-              <h3>{campaign.name}</h3>
-              <span className="pill navy">{campaign.status}</span>
-            </div>
-            <dl className="meta-list">
-              <div><dt>Code</dt><dd>{campaign.code}</dd></div>
-              <div><dt>Source</dt><dd>{campaign.source}</dd></div>
-              <div><dt>Owner</dt><dd>{campaign.owner}</dd></div>
-              <div><dt>Region</dt><dd>{campaign.region}</dd></div>
-            </dl>
-            <div className="progress-wrap stacked">
-              <div className="progress-bar">
-                <span style={{ width: `${campaign.progress}%` }} />
-              </div>
-              <small>{campaign.progress}% complete</small>
-            </div>
-          </article>
-        ))}
+      <div className="panel empty-state">
+        <h2>Route not available</h2>
+        <p>The page you requested is not part of the current Milestone 1 platform configuration.</p>
+        <Link className="primary-button" to="/dashboard">Return to dashboard</Link>
       </div>
-    </div>
-  )
-}
-
-function IntakePage() {
-  const [submitted, setSubmitted] = useState(false)
-  const [status, setStatus] = useState('Unknown')
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitted(true)
-  }
-
-  return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Prospect intake</p>
-          <h1>Quick prospect intake</h1>
-        </div>
-        <Link className="ghost-button" to="/queue">Review queue</Link>
-      </div>
-
-      <form className="panel form-panel" onSubmit={handleSubmit}>
-        <div className="form-grid">
-          <label>
-            Source channel
-            <select defaultValue="Partner referral">
-              <option>Partner referral</option>
-              <option>Social discovery</option>
-              <option>Website intake</option>
-              <option>Community list</option>
-            </select>
-          </label>
-
-          <label>
-            Prospect identifier, URL, or social handle
-            <input type="text" defaultValue="https://instagram.com/nextgenco" />
-          </label>
-
-          <label>
-            Business or person name
-            <input type="text" defaultValue="Northside Realty Group" />
-          </label>
-
-          <label>
-            Greek status
-            <select value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option>Yes</option>
-              <option>Unknown</option>
-              <option>No</option>
-              <option>Not Disclosed</option>
-            </select>
-          </label>
-
-          <label>
-            D9 organization when known
-            <select defaultValue="Alpha Phi Alpha">
-              <option>Alpha Phi Alpha</option>
-              <option>Delta Sigma Theta</option>
-              <option>Kappa Alpha Psi</option>
-              <option>Other</option>
-            </select>
-          </label>
-
-          <label>
-            Campaign
-            <select defaultValue="Spring Partner Push">
-              <option>Spring Partner Push</option>
-              <option>Citywide outreach</option>
-              <option>Community network</option>
-            </select>
-          </label>
-
-          <label>
-            Assigned operator
-            <input type="text" defaultValue="A. Martin" />
-          </label>
-
-          <label>
-            City and state
-            <input type="text" defaultValue="Atlanta, GA" />
-          </label>
-
-          <label>
-            Email
-            <input type="email" defaultValue="hello@northsiderealty.com" />
-          </label>
-
-          <label>
-            Phone
-            <input type="tel" defaultValue="(404) 555-0124" />
-          </label>
-
-          <label className="full-width">
-            Notes
-            <textarea rows={4} defaultValue="Introduced via partner and needs cohort verification before listing." />
-          </label>
-        </div>
-
-        <div className="form-actions">
-          <button type="button" className="ghost-button">Save draft</button>
-          <button type="submit" className="primary-button">Save and route</button>
-        </div>
-
-        {submitted && (
-          <div className="success-banner" aria-live="polite">
-            Prospect saved and routed to the {status} workflow review queue.
-          </div>
-        )}
-      </form>
     </div>
   )
 }
