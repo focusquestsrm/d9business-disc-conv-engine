@@ -199,6 +199,87 @@ CREATE TABLE IF NOT EXISTS public.integration_statuses (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE OR REPLACE FUNCTION public.enforce_workflow_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.d9_connection_status IS DISTINCT FROM NEW.d9_connection_status THEN
+    IF OLD.d9_connection_status = 'opt_out' AND NEW.d9_connection_status <> 'opt_out' AND COALESCE(NEW.consent_status, 'unknown') <> 'allowed' THEN
+      RAISE EXCEPTION 'Opted-out records require renewed consent before returning to active outreach.';
+    END IF;
+
+    IF NEW.d9_connection_status = 'duplicate' THEN
+      NEW.workflow_status = 'duplicate_review';
+    END IF;
+
+    IF NEW.d9_connection_status = 'known_greek' THEN
+      NEW.workflow_status = 'd9_connection_reported';
+    END IF;
+
+    IF NEW.d9_connection_status = 'unknown' THEN
+      NEW.workflow_status = 'outreach_needed';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.record_workflow_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND OLD.d9_connection_status IS DISTINCT FROM NEW.d9_connection_status THEN
+    INSERT INTO public.workflow_events (
+      entity_type,
+      entity_id,
+      event_type,
+      actor_user_id,
+      details
+    ) VALUES (
+      TG_ARGV[0],
+      NEW.id,
+      'status_transition',
+      NULL,
+      jsonb_build_object(
+        'previous_status', OLD.d9_connection_status,
+        'new_status', NEW.d9_connection_status,
+        'reason', 'status_changed',
+        'entity_table', TG_TABLE_NAME
+      )
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_prospect_workflow_transition
+BEFORE UPDATE ON public.prospects
+FOR EACH ROW
+WHEN (OLD.d9_connection_status IS DISTINCT FROM NEW.d9_connection_status)
+EXECUTE FUNCTION public.enforce_workflow_transition();
+
+CREATE TRIGGER trg_business_workflow_transition
+BEFORE UPDATE ON public.businesses
+FOR EACH ROW
+WHEN (OLD.d9_connection_status IS DISTINCT FROM NEW.d9_connection_status)
+EXECUTE FUNCTION public.enforce_workflow_transition();
+
+CREATE TRIGGER trg_prospect_workflow_audit
+AFTER UPDATE ON public.prospects
+FOR EACH ROW
+WHEN (OLD.d9_connection_status IS DISTINCT FROM NEW.d9_connection_status)
+EXECUTE FUNCTION public.record_workflow_transition('prospect');
+
+CREATE TRIGGER trg_business_workflow_audit
+AFTER UPDATE ON public.businesses
+FOR EACH ROW
+WHEN (OLD.d9_connection_status IS DISTINCT FROM NEW.d9_connection_status)
+EXECUTE FUNCTION public.record_workflow_transition('business');
+
 CREATE INDEX IF NOT EXISTS idx_businesses_d9_status ON public.businesses (d9_connection_status);
 CREATE INDEX IF NOT EXISTS idx_businesses_city_state ON public.businesses (city, state);
 CREATE INDEX IF NOT EXISTS idx_prospects_status ON public.prospects (workflow_status, d9_connection_status);

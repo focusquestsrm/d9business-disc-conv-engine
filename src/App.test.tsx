@@ -2,6 +2,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRoot } from './App'
+import {
+  classifyDuplicateMatch,
+  getWorkflowRoute,
+  isTransitionAllowed,
+} from './lib/workflow'
 
 const { mockSupabase } = vi.hoisted(() => ({
   mockSupabase: {
@@ -20,6 +25,32 @@ vi.mock('./lib/supabaseClient', () => ({
   supabaseStatusMessage: 'Supabase connection configured and ready for authenticated session management.',
   isSupabaseConfigured: true,
 }))
+
+describe('workflow engine', () => {
+  it('routes reported Greek affiliations to verification and blocks unsafe transitions', () => {
+    const result = getWorkflowRoute('unknown', 'known_greek', { reportedGreek: true })
+    expect(result.allowed).toBe(true)
+    expect(result.requiresVerification).toBe(true)
+    expect(result.route).toBe('verification')
+
+    expect(isTransitionAllowed('opt_out', 'unknown', { renewedConsent: false })).toBe(false)
+    expect(isTransitionAllowed('opt_out', 'unknown', { renewedConsent: true })).toBe(true)
+  })
+
+  it('keeps unknown records in outreach follow-up and prevents invalid duplicates', () => {
+    const unknownRoute = getWorkflowRoute('unknown', 'unknown', {})
+    expect(unknownRoute.route).toBe('outreach')
+    expect(isTransitionAllowed('unknown', 'duplicate', {})).toBe(true)
+    expect(isTransitionAllowed('duplicate', 'unknown', {})).toBe(false)
+  })
+
+  it('classifies duplicate candidate strength and requires review for uncertain matches', () => {
+    expect(classifyDuplicateMatch(['email', 'phone'], [])).toBe('exact')
+    expect(classifyDuplicateMatch(['business_name', 'city'], ['email'])).toBe('probable')
+    expect(classifyDuplicateMatch(['city'], ['email', 'phone'])).toBe('possible')
+    expect(classifyDuplicateMatch([], [])).toBe('no_match')
+  })
+})
 
 describe('App', () => {
   beforeEach(() => {

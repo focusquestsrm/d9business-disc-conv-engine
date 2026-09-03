@@ -21,6 +21,8 @@ SELECT 'public.integration_statuses' AS table_name, to_regclass('public.integrat
 SELECT 'public.set_updated_at' AS function_name, to_regprocedure('public.set_updated_at') AS exists;
 SELECT 'public.build_d9_match_candidate' AS function_name, to_regprocedure('public.build_d9_match_candidate') AS exists;
 SELECT 'public.tenant_allowed_read' AS function_name, to_regprocedure('public.tenant_allowed_read') AS exists;
+SELECT 'public.enforce_workflow_transition' AS function_name, to_regprocedure('public.enforce_workflow_transition') AS exists;
+SELECT 'public.record_workflow_transition' AS function_name, to_regprocedure('public.record_workflow_transition') AS exists;
 
 SELECT 'milestone_2_schema_objects_present' AS check_name,
        COUNT(*) AS expected_objects
