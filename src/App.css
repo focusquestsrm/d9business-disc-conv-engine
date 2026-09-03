@@ -1,3 +1,36 @@
+:root {
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.45;
+  font-weight: 400;
+  font-size: 14px;
+  color: #111111;
+  background: #F7F8F9;
+  --type-xs: 0.69rem;
+  --type-sm: 0.75rem;
+  --type-base: 0.875rem;
+  --type-md: 0.94rem;
+  --type-lg: 1.05rem;
+  --type-xl: 1.25rem;
+  --type-2xl: 1.75rem;
+  --navy: #374B5C;
+  --navy-strong: #1d2a34;
+  --orange: #F96825;
+  --white: #FFFFFF;
+  --bg: #F7F8F9;
+  --secondary-bg: #F1F3F4;
+  --card-bg: #FFFFFF;
+  --primary-text: #111111;
+  --secondary-text: #52616D;
+  --muted-text: #6F7C86;
+  --border: #DCE1E5;
+  --strong-border: #C8D0D6;
+  --hover-bg: #F2F4F5;
+  --success: #1f7a59;
+  --warning: #b76b18;
+  --danger: #b42318;
+  --shadow: 0 1px 0 rgba(17, 17, 17, 0.04);
+}
+
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -5,11 +38,11 @@
 }
 
 .sidebar {
-  width: 260px;
+  width: 212px;
   flex-shrink: 0;
   background: var(--navy);
   color: rgba(255, 255, 255, 0.9);
-  padding: 18px 14px 24px;
+  padding: 10px 8px 12px;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -41,12 +74,12 @@
 }
 
 .brand-name {
-  font-size: 0.96rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
 .brand-subtitle {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.72);
 }
 
@@ -96,11 +129,11 @@
 }
 
 .nav-group-label {
-  padding: 0 8px;
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
+  padding: 0 7px;
+  font-size: 0.69rem;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .nav-items {
@@ -112,11 +145,11 @@
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 0.88rem;
+  font-size: 0.875rem;
   transition: background 0.2s ease, color 0.2s ease;
 }
 
@@ -146,15 +179,15 @@
 .main-panel {
   flex: 1;
   min-width: 0;
-  padding: 20px 28px 28px;
+  padding: 12px 14px 16px;
 }
 
 .topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-  min-height: 56px;
+  gap: 10px;
+  margin-bottom: 12px;
+  min-height: 44px;
 }
 
 .search-box {
@@ -162,12 +195,12 @@
   align-items: center;
   gap: 8px;
   flex: 1;
-  max-width: 520px;
+  max-width: 340px;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  height: 42px;
-  padding: 0 12px;
+  border-radius: 10px;
+  height: 34px;
+  padding: 0 10px;
   color: var(--secondary-text);
 }
 
@@ -199,19 +232,19 @@
   gap: 10px;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 8px 12px;
+  border-radius: 10px;
+  padding: 6px 10px;
 }
 
 .user-avatar {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: rgba(55, 75, 92, 0.12);
   color: var(--navy);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 700;
 }
 
@@ -222,12 +255,12 @@
 }
 
 .user-meta strong {
-  font-size: 0.82rem;
+  font-size: 0.8125rem;
 }
 
 .user-meta span {
   color: var(--secondary-text);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
 }
 
 .icon-button {
@@ -239,10 +272,10 @@
 
 .primary-button,
 .ghost-button {
-  border-radius: 10px;
+  border-radius: 9px;
   border: 1px solid transparent;
-  height: 38px;
-  padding: 0 14px;
+  height: 32px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -250,6 +283,7 @@
   transition: opacity 0.2s ease, transform 0.2s ease;
   font-weight: 600;
   text-decoration: none;
+  font-size: 0.8125rem;
 }
 
 .primary-button {
@@ -272,61 +306,62 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  min-height: 42px;
 }
 
 .eyebrow {
-  margin: 0 0 6px;
-  font-size: 0.76rem;
-  letter-spacing: 0.12em;
+  margin: 0 0 4px;
+  font-size: 0.68rem;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--secondary-text);
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(1.7rem, 2vw, 2.1rem);
-  line-height: 1.2;
+  font-size: clamp(1.4rem, 1.6vw, 1.75rem);
+  line-height: 1.25;
   color: var(--navy);
 }
 
 h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.125rem;
   color: var(--navy);
 }
 
 h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   color: var(--navy);
 }
 
 .summary-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .metric-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 16px 16px 14px;
+  padding: 12px 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .metric-card strong {
-  font-size: 1.8rem;
+  font-size: 2rem;
   letter-spacing: -0.04em;
   color: var(--primary-text);
 }
@@ -361,8 +396,8 @@ h3 {
 .panel {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px;
+  border-radius: 10px;
+  padding: 10px 12px 8px;
   box-shadow: var(--shadow);
 }
 
@@ -370,8 +405,8 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .stack-list,
@@ -416,10 +451,10 @@ h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
-  padding: 4px 10px;
+  min-height: 20px;
+  padding: 3px 8px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.6875rem;
   font-weight: 600;
 }
 
@@ -544,20 +579,21 @@ h3 {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.8125rem;
 }
 
 .data-table th,
 .data-table td {
-  padding: 12px 14px;
+  padding: 9px 10px;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
 }
 
 .data-table th {
   background: var(--secondary-bg);
   color: var(--navy);
-  font-size: 0.78rem;
+  font-size: 0.6875rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -614,7 +650,7 @@ h3 {
 
 .login-header h1 {
   margin: 0 0 8px;
-  font-size: clamp(1.75rem, 2vw, 2.1rem);
+  font-size: clamp(1.5rem, 2vw, 1.8rem);
   letter-spacing: -0.04em;
   line-height: 1.2;
   color: #0f1720;
@@ -768,7 +804,7 @@ h3 {
   }
 
   .main-panel {
-    padding: 20px 16px 24px;
+    padding: 16px 14px 18px;
   }
 
   .topbar {

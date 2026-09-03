@@ -3,13 +3,10 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
-  BriefcaseBusiness,
   Building2,
   CalendarCheck2,
-  CheckCircle2,
   CircleDashed,
   FileText,
-  FolderKanban,
   LayoutDashboard,
   Lock,
   LogOut,
@@ -20,11 +17,11 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
-  Wand2,
   X,
 } from 'lucide-react'
 import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
+import { classifyD9Status, getWorkflowRoutingLabel, normalizeText, normalizeWebsite } from './lib/discovery'
 import { isSupabaseConfigured, supabase, supabaseStatusMessage } from './lib/supabaseClient'
 
 type NavItem = {
@@ -49,13 +46,30 @@ type SessionUser = {
 }
 
 const navGroups: NavGroup[] = [
-  { label: 'Overview', items: [{ label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' }, { label: 'Work Queue', icon: CircleDashed, to: '/queue' }] },
-  { label: 'Discovery', items: [{ label: 'Prospects', icon: Users, to: '/prospects', future: true }, { label: 'Businesses', icon: Building2, to: '/businesses', future: true }, { label: 'Campaigns', icon: Megaphone, to: '/campaigns' }, { label: 'Nominations', icon: ArrowRight, to: '/nominations', future: true }, { label: 'Imports', icon: FileText, to: '/imports', future: true }] },
-  { label: 'Social Engagement', items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox', future: true }, { label: 'Content Studio', icon: Sparkles, to: '/content-studio', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }, { label: 'Published Posts', icon: CheckCircle2, to: '/published-posts', future: true }, { label: 'Social Performance', icon: BarChart3, to: '/social-performance', future: true }, { label: 'Templates', icon: FolderKanban, to: '/templates', future: true }] },
-  { label: 'Review and Approval', items: [{ label: 'D9 Verification', icon: ShieldCheck, to: '/verification' }, { label: 'Consent Review', icon: Lock, to: '/consent-review', future: true }, { label: 'Content Approvals', icon: CheckCircle2, to: '/content-approvals', future: true }, { label: 'Duplicate Review', icon: AlertTriangle, to: '/duplicate-review', future: true }, { label: 'Exceptions', icon: AlertTriangle, to: '/exceptions', future: true }] },
-  { label: 'Conversion and Growth', items: [{ label: 'Profile Claims', icon: BriefcaseBusiness, to: '/profile-claims', future: true }, { label: 'Marketplace Handoffs', icon: Building2, to: '/marketplace-handoffs', future: true }, { label: 'Membership Handoffs', icon: BriefcaseBusiness, to: '/membership-handoffs', future: true }, { label: 'Growth Handoffs', icon: Wand2, to: '/growth-handoffs', future: true }, { label: 'Spotlights', icon: Sparkles, to: '/spotlights', future: true }] },
-  { label: 'Intelligence', items: [{ label: 'Engine Reports', icon: BarChart3, to: '/engine-reports', future: true }, { label: 'Campaign Attribution', icon: Megaphone, to: '/campaign-attribution', future: true }, { label: 'Social-to-Membership Funnel', icon: ArrowRight, to: '/social-membership-funnel', future: true }, { label: 'D9 Intelligence Dashboard', icon: BarChart3, to: '/d9-intelligence', future: true }] },
-  { label: 'System', items: [{ label: 'Users and Roles', icon: Users, to: '/admin/users', requiresAdmin: true }, { label: 'Social Connections', icon: Users, to: '/social-connections', future: true }, { label: 'Integrations', icon: FileText, to: '/integrations' }, { label: 'Workflow Rules', icon: CircleDashed, to: '/workflow-rules', future: true }, { label: 'Organization Settings', icon: Building2, to: '/organization-settings' }, { label: 'Audit Log', icon: FileText, to: '/audit-log' }] },
+  {
+    label: 'Overview',
+    items: [{ label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' }, { label: 'Work Queue', icon: CircleDashed, to: '/queue' }],
+  },
+  {
+    label: 'Discovery',
+    items: [{ label: 'Prospects', icon: Users, to: '/prospects' }, { label: 'Businesses', icon: Building2, to: '/businesses' }, { label: 'Campaigns', icon: Megaphone, to: '/campaigns' }, { label: 'Nominations', icon: ArrowRight, to: '/nominations' }, { label: 'Imports', icon: FileText, to: '/imports' }],
+  },
+  {
+    label: 'Verification',
+    items: [{ label: 'Verification Queue', icon: ShieldCheck, to: '/verification' }, { label: 'Consent Review', icon: Lock, to: '/consent-review', future: true }, { label: 'Duplicate Review', icon: AlertTriangle, to: '/duplicate-review' }],
+  },
+  {
+    label: 'Social Engagement',
+    items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox', future: true }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
+  },
+  {
+    label: 'Integrations',
+    items: [{ label: 'D9 Intelligence', icon: BarChart3, to: '/d9-intelligence', future: true }, { label: 'Brilliant Directories', icon: Building2, to: '/brilliant-directories', future: true }, { label: 'Social Connections', icon: Users, to: '/social-connections', future: true }, { label: 'Integration Health', icon: FileText, to: '/integrations' }],
+  },
+  {
+    label: 'Administration',
+    items: [{ label: 'Users & Roles', icon: Users, to: '/admin/users', requiresAdmin: true }, { label: 'Audit Log', icon: FileText, to: '/audit-log' }, { label: 'Settings', icon: Building2, to: '/organization-settings' }],
+  },
 ]
 
 function AppRoot() {
@@ -277,7 +291,7 @@ function AppRoot() {
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
-              <QueuePage />
+              <WorkQueuePage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -297,7 +311,7 @@ function AppRoot() {
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
-              <PlaceholderPage moduleName="D9 Verification" purpose="Review and confirm D9 connection submissions and organization-aware public language approval before moving records toward conversion and membership steps." milestone="Milestone 3" relatedSystem="Verification reviewer workflow and consent ledger" />
+              <VerificationQueuePage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -307,7 +321,47 @@ function AppRoot() {
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
-              <PlaceholderPage moduleName="Prospects" purpose="Create and manage prospect intake, matching, and routing for discovery and conversion workflows." milestone="Milestone 2" relatedSystem="Prospect intake and operator queue" />
+              <ProspectsPage currentUserId={session?.user?.id ?? null} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <BusinessesPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/nominations"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <NominationsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/imports"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <ImportsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/duplicate-review"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+              <DuplicateReviewPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -605,6 +659,43 @@ function UnauthorizedPage() {
 }
 
 function DashboardPage() {
+  const [stats, setStats] = useState({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0 })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadStats = async () => {
+      if (!supabase) {
+        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0 })
+        setLoading(false)
+        return
+      }
+
+      const [prospects, businesses, campaigns, nominations] = await Promise.all([
+        supabase.from('prospects').select('id', { count: 'exact', head: true }),
+        supabase.from('businesses').select('id', { count: 'exact', head: true }),
+        supabase.from('campaigns').select('id', { count: 'exact', head: true }),
+        supabase.from('nominations').select('id', { count: 'exact', head: true }),
+      ])
+
+      setStats({
+        prospects: prospects?.count ?? 0,
+        businesses: businesses?.count ?? 0,
+        campaigns: campaigns?.count ?? 0,
+        nominations: nominations?.count ?? 0,
+      })
+      setLoading(false)
+    }
+
+    void loadStats()
+  }, [])
+
+  const readinessRows = [
+    { label: 'Authentication', detail: 'Protected local session flow', status: 'Configured' },
+    { label: 'Discovery intake', detail: 'Prospect capture and duplicate screening', status: 'Live' },
+    { label: 'Workflow routing', detail: 'Known Greek, unknown, duplicate, opt-out', status: 'Ready' },
+    { label: 'Supabase env', detail: supabaseStatusMessage.includes('not configured') ? 'Pending configuration' : 'Ready', status: supabaseStatusMessage.includes('not configured') ? 'Pending' : 'Ready' },
+  ]
+
   return (
     <div className="page">
       <div className="page-header">
@@ -617,24 +708,24 @@ function DashboardPage() {
 
       <section className="summary-row">
         <article className="metric-card tone-navy">
-          <span className="metric-label">Authentication</span>
-          <strong>Configured</strong>
-          <span className="metric-delta">Supabase hook present</span>
+          <span className="metric-label">Prospects</span>
+          <strong>{loading ? '—' : stats.prospects}</strong>
+          <span className="metric-delta">Live records</span>
         </article>
         <article className="metric-card tone-orange">
-          <span className="metric-label">Active staff</span>
-          <strong>12</strong>
-          <span className="metric-delta">Demo set</span>
+          <span className="metric-label">Businesses</span>
+          <strong>{loading ? '—' : stats.businesses}</strong>
+          <span className="metric-delta">Canonical records</span>
         </article>
         <article className="metric-card tone-muted">
-          <span className="metric-label">Role distribution</span>
-          <strong>9 roles</strong>
-          <span className="metric-delta">Seeded</span>
+          <span className="metric-label">Campaigns</span>
+          <strong>{loading ? '—' : stats.campaigns}</strong>
+          <span className="metric-delta">Active coverage</span>
         </article>
         <article className="metric-card tone-navy">
-          <span className="metric-label">Integrations</span>
-          <strong>4</strong>
-          <span className="metric-delta">Ready for registry</span>
+          <span className="metric-label">Nominations</span>
+          <strong>{loading ? '—' : stats.nominations}</strong>
+          <span className="metric-delta">Review queue</span>
         </article>
       </section>
 
@@ -642,75 +733,1201 @@ function DashboardPage() {
         <div className="panel">
           <div className="panel-header"><h2>Platform readiness</h2></div>
           <div className="stack-list">
-            <div className="list-row"><div><strong>Authentication</strong><span>Protected local session flow</span></div><span className="pill neutral">Configured</span></div>
-            <div className="list-row"><div><strong>Role model</strong><span>Admin, operator, intern, reviewer</span></div><span className="pill neutral">Seeded</span></div>
-            <div className="list-row"><div><strong>Audit log</strong><span>Platform change tracking</span></div><span className="pill neutral">Ready</span></div>
-            <div className="list-row"><div><strong>Netlify routing</strong><span>SPA redirect configured</span></div><span className="pill neutral">Ready</span></div>
+            {readinessRows.map((row) => (
+              <div key={row.label} className="list-row">
+                <div>
+                  <strong>{row.label}</strong>
+                  <span>{row.detail}</span>
+                </div>
+                <span className="pill neutral">{row.status}</span>
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="panel">
-          <div className="panel-header"><h2>Upcoming milestones</h2></div>
+          <div className="panel-header"><h2>Discovery pulse</h2></div>
           <ul className="activity-feed">
-            <li>Milestone 2: discovery intake, matching, and workflow routing.</li>
-            <li>Milestone 3: D9 verification, consent, and social engagement flows.</li>
-            <li>Milestone 4: marketplace conversion, membership, and intelligence integration.</li>
+            <li>Prospect intake captures partial data and resolves duplicates before persistence.</li>
+            <li>Business and nomination flows are aligned to D9 connection status and review steps.</li>
+            <li>Integration boundaries remain separate from the core discovery engine until live adapters are configured.</li>
           </ul>
-        </div>
-      </section>
-
-      <section className="content-grid three-col">
-        <div className="panel">
-          <div className="panel-header"><h2>Recent admin activity</h2></div>
-          <ul className="activity-feed">
-            <li>Platform settings view requested by Tina Morgan.</li>
-            <li>Integration registry reviewed for readiness.</li>
-            <li>Audit log initialized for admin events.</li>
-          </ul>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header"><h2>Integrations</h2></div>
-          <div className="distribution-list">
-            <div><span>Brilliant Directories</span><strong>Read-only</strong></div>
-            <div><span>D9 Intelligence</span><strong>Read-only</strong></div>
-            <div><span>Instagram</span><strong>Blocked</strong></div>
-            <div><span>Email Provider</span><strong>Ready</strong></div>
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header"><h2>Configuration alerts</h2></div>
-          <div className="distribution-list">
-            <div><span>Supabase env</span><strong>{supabaseStatusMessage.includes('not configured') ? 'Pending' : 'Ready'}</strong></div>
-            <div><span>Login flow</span><strong>Guarded</strong></div>
-            <div><span>Netlify redirect</span><strong>Enabled</strong></div>
-            <div><span>Milestone 2</span><strong>Locked</strong></div>
-          </div>
         </div>
       </section>
     </div>
   )
 }
 
-function QueuePage() {
+function WorkQueuePage() {
+  const [items, setItems] = useState<Array<{ id: string; title: string; owner: string; priority: string; status: string }>>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadQueue = async () => {
+      if (!supabase) {
+        setItems([])
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('workflow_assignments')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        setItems([])
+        setLoading(false)
+        return
+      }
+
+      const mapped = (data ?? []).map((row: any) => ({
+        id: row.id,
+        title: `${row.entity_type} review`,
+        owner: row.assigned_to ?? 'Unassigned',
+        priority: row.priority ?? 'normal',
+        status: row.status ?? 'active',
+      }))
+
+      setItems(mapped)
+      setLoading(false)
+    }
+
+    void loadQueue()
+  }, [])
+
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Milestone 1</p>
+          <p className="eyebrow">Operations</p>
           <h1>Work Queue</h1>
         </div>
+        <button type="button" className="primary-button">Assign tasks</button>
       </div>
-      <div className="panel empty-state">
-        <h2>Platform setup queue</h2>
-        <p>This queue is reserved for Milestone 2 operational workflows. Current work is focused on authentication, roles, routing, and integration readiness.</p>
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Priority queue</h2>
+          <span className="pill navy">{items.length || 0} active</span>
+        </div>
+        {loading ? (
+          <p>Loading queue…</p>
+        ) : items.length ? (
+          <div className="stack-list">
+            {items.map((item) => (
+              <div key={item.id} className="list-row">
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>{item.owner}</span>
+                </div>
+                <div className="header-inline-actions">
+                  <span className="pill neutral">{item.priority}</span>
+                  <span className="pill navy">{item.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No active assignments</h2>
+            <p>New operational workflow items will appear here when they are routed to the team.</p>
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function VerificationQueuePage() {
+  const items = [
+    { company: 'Northside Studio', status: 'Manual review', confidence: '93%' },
+    { company: 'Greene & Co Events', status: 'Ready', confidence: '88%' },
+    { company: 'Atlas Brewing Co.', status: 'Blocked by consent', confidence: '76%' },
+  ]
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Verification</p>
+          <h1>Verification Queue</h1>
+        </div>
+        <button type="button" className="primary-button">New verification</button>
+      </div>
+      <div className="panel table-panel">
+        <table className="data-table">
+          <thead>
+            <tr><th>Company</th><th>Verification status</th><th>Confidence</th></tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.company}>
+                <td>{item.company}</td>
+                <td><span className="pill neutral">{item.status}</span></td>
+                <td>{item.confidence}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function ProspectsPage({ currentUserId }: { currentUserId: string | null }) {
+  type ProspectRow = {
+    id: string
+    business_name: string
+    display_name: string
+    primary_contact_name: string | null
+    email: string | null
+    phone: string | null
+    website: string | null
+    city: string | null
+    state: string | null
+    industry: string | null
+    workflow_status: string
+    d9_connection_status: string
+    consent_status: string
+    source_url: string | null
+    created_at: string
+  }
+
+  const [prospects, setProspects] = useState<ProspectRow[]>([])
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortKey, setSortKey] = useState('created_at')
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [selectedProspect, setSelectedProspect] = useState<ProspectRow | null>(null)
+  const [selectedProspectDraft, setSelectedProspectDraft] = useState<Partial<ProspectRow>>({})
+  const [selectedProspectHistory, setSelectedProspectHistory] = useState<Array<{ id: string; event_type: string; created_at: string; details?: Record<string, any> }>>([])
+  const [selectedProspectOptOuts, setSelectedProspectOptOuts] = useState<Array<{ id: string; source: string; opt_out_reason?: string; created_at: string }>>([])
+  const [businessOptions, setBusinessOptions] = useState<Array<{ id: string; display_name: string }>>([])
+  const [form, setForm] = useState({
+    business_name: '',
+    primary_contact_name: '',
+    email: '',
+    phone: '',
+    website: '',
+    city: '',
+    state: '',
+    industry: '',
+    source_url: '',
+    d9_connection_status: 'unknown',
+    workflow_status: 'new',
+    consent_status: 'unknown',
+  })
+
+  const pageSize = 5
+
+  const fetchProspects = async () => {
+    if (!supabase) {
+      setProspects([])
+      setLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('prospects')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      setProspects([])
+      setLoading(false)
+      return
+    }
+
+    setProspects((data ?? []) as ProspectRow[])
+    setLoading(false)
+  }
+
+  useEffect(() => { void fetchProspects() }, [])
+
+  useEffect(() => {
+    const loadBusinessOptions = async () => {
+      if (!supabase) {
+        setBusinessOptions([])
+        return
+      }
+
+      const { data, error } = await supabase.from('businesses').select('id, display_name').order('display_name', { ascending: true })
+      if (!error) {
+        setBusinessOptions((data ?? []) as Array<{ id: string; display_name: string }>)
+      }
+    }
+
+    void loadBusinessOptions()
+  }, [])
+
+  useEffect(() => {
+    if (!selectedProspect) {
+      setSelectedProspectDraft({})
+      setSelectedProspectHistory([])
+      setSelectedProspectOptOuts([])
+      return
+    }
+
+    setSelectedProspectDraft({ ...selectedProspect })
+
+    const loadSelectedProspectDetails = async () => {
+      if (!supabase) {
+        setSelectedProspectHistory([])
+        setSelectedProspectOptOuts([])
+        return
+      }
+
+      const [eventsResult, optOutResult] = await Promise.all([
+        supabase.from('workflow_events').select('*').eq('entity_id', selectedProspect.id).order('created_at', { ascending: false }),
+        supabase.from('opt_outs').select('*').eq('entity_id', selectedProspect.id).order('created_at', { ascending: false }),
+      ])
+
+      if (!eventsResult.error) {
+        setSelectedProspectHistory((eventsResult.data ?? []) as Array<{ id: string; event_type: string; created_at: string; details?: Record<string, any> }>)
+      }
+
+      if (!optOutResult.error) {
+        setSelectedProspectOptOuts((optOutResult.data ?? []) as Array<{ id: string; source: string; opt_out_reason?: string; created_at: string }>)
+      }
+    }
+
+    void loadSelectedProspectDetails()
+  }, [selectedProspect])
+
+  const normalizedSearch = search.trim().toLowerCase()
+  const filteredProspects = prospects.filter((prospect) => {
+    const matchesStatus = statusFilter === 'all' || prospect.workflow_status === statusFilter
+    const haystack = [
+      prospect.business_name,
+      prospect.display_name,
+      prospect.primary_contact_name,
+      prospect.email,
+      prospect.phone,
+      prospect.city,
+      prospect.state,
+      prospect.industry,
+    ].filter(Boolean).join(' ').toLowerCase()
+
+    const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch)
+    return matchesStatus && matchesSearch
+  })
+
+  const sortedProspects = [...filteredProspects].sort((a, b) => {
+    if (sortKey === 'business_name') {
+      return (a.business_name || '').localeCompare(b.business_name || '')
+    }
+
+    if (sortKey === 'workflow_status') {
+      return (a.workflow_status || '').localeCompare(b.workflow_status || '')
+    }
+
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+
+  const totalPages = Math.max(1, Math.ceil(sortedProspects.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedProspects = sortedProspects.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
+  const handleInputChange = (field: string, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const handleDuplicateCheck = async (payload: Record<string, string | null | undefined>) => {
+    if (!supabase) return null
+
+    const filters = [] as string[]
+    if (payload.email) filters.push(`email.eq.${payload.email}`)
+    if (payload.phone) filters.push(`phone.eq.${payload.phone}`)
+    if (payload.website) filters.push(`website.eq.${payload.website}`)
+    if (payload.business_name) filters.push(`business_name.eq.${payload.business_name}`)
+
+    if (!filters.length) return null
+
+    const { data, error } = await supabase
+      .from('prospects')
+      .select('id, business_name, email, phone, website, workflow_status')
+      .or(filters.join(',') as string)
+
+    if (!error && data?.length) {
+      return data[0]
+    }
+
+    return null
+  }
+
+  const handleSaveProspect = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setSaveError(null)
+    setSaveStatus(null)
+
+    const payload: {
+      business_name: string
+      display_name: string
+      primary_contact_name: string | null
+      email: string | null
+      phone: string | null
+      website: string | null
+      city: string | null
+      state: string | null
+      industry: string | null
+      source_url: string | null
+      d9_connection_status: string
+      workflow_status: string
+      consent_status: string
+      created_by: string | null
+    } = {
+      business_name: form.business_name,
+      display_name: form.business_name || form.primary_contact_name || 'Untitled prospect',
+      primary_contact_name: form.primary_contact_name || null,
+      email: form.email || null,
+      phone: form.phone || null,
+      website: form.website || null,
+      city: form.city || null,
+      state: form.state || null,
+      industry: form.industry || null,
+      source_url: form.source_url || null,
+      d9_connection_status: form.d9_connection_status,
+      workflow_status: form.workflow_status || 'incomplete',
+      consent_status: form.consent_status,
+      created_by: currentUserId,
+    }
+
+    if (!supabase) {
+      setSaveStatus('Prospect saved locally for the current browser session.')
+      setSaving(false)
+      return
+    }
+
+    const duplicate = await handleDuplicateCheck(payload)
+    if (duplicate) {
+      setSaving(false)
+      setSaveError(`Duplicate prospect detected for ${duplicate.business_name || 'this record'}. Review the existing opportunity before creating a second entry.`)
+      return
+    }
+
+    const { data, error } = await supabase.from('prospects').insert(payload).select('id')
+    if (error) {
+      setSaving(false)
+      setSaveError(error.message || 'Unable to save the prospect.')
+      return
+    }
+
+    const prospectId = data?.[0]?.id
+    if (prospectId) {
+      await supabase.from('workflow_events').insert({
+        entity_type: 'prospect',
+        entity_id: prospectId,
+        event_type: 'created',
+        actor_user_id: currentUserId,
+        details: { source: 'quick_intake', workflow_status: payload.workflow_status },
+      })
+    }
+
+    setSaveStatus('Prospect saved.')
+    setForm({
+      business_name: '',
+      primary_contact_name: '',
+      email: '',
+      phone: '',
+      website: '',
+      city: '',
+      state: '',
+      industry: '',
+      source_url: '',
+      d9_connection_status: 'unknown',
+      workflow_status: 'new',
+      consent_status: 'unknown',
+    })
+    setSaving(false)
+    await fetchProspects()
+  }
+
+  const handleSelectedProspectDraftChange = (field: keyof ProspectRow, value: string) => {
+    setSelectedProspectDraft((current) => ({ ...(current ?? {}), [field]: value }))
+  }
+
+  const handleUpdateSelectedProspect = async () => {
+    if (!selectedProspect || !supabase) return
+
+    const draft = selectedProspectDraft as Partial<ProspectRow>
+    const { error } = await supabase.from('prospects').update({
+      business_name: draft.business_name ?? selectedProspect.business_name,
+      primary_contact_name: draft.primary_contact_name ?? selectedProspect.primary_contact_name,
+      email: draft.email ?? selectedProspect.email,
+      phone: draft.phone ?? selectedProspect.phone,
+      website: draft.website ?? selectedProspect.website,
+      city: draft.city ?? selectedProspect.city,
+      state: draft.state ?? selectedProspect.state,
+      industry: draft.industry ?? selectedProspect.industry,
+      d9_connection_status: draft.d9_connection_status ?? selectedProspect.d9_connection_status,
+      workflow_status: draft.workflow_status ?? selectedProspect.workflow_status,
+      consent_status: draft.consent_status ?? selectedProspect.consent_status,
+      source_url: draft.source_url ?? selectedProspect.source_url,
+    }).eq('id', selectedProspect.id)
+
+    if (!error) {
+      setSelectedProspect({ ...selectedProspect, ...draft } as ProspectRow)
+      await fetchProspects()
+    }
+  }
+
+  const handleOptOutSelectedProspect = async () => {
+    if (!selectedProspect || !supabase) return
+
+    const { error: optOutError } = await supabase.from('opt_outs').insert({
+      entity_type: 'prospect',
+      entity_id: selectedProspect.id,
+      source: 'manual_review',
+      opt_out_reason: 'Marked opt-out by authorized staff',
+      created_by: currentUserId,
+    })
+
+    if (optOutError) return
+
+    const { error: updateError } = await supabase.from('prospects').update({
+      workflow_status: 'opt_out_review',
+      d9_connection_status: 'opt_out',
+      consent_status: 'opt_out',
+    }).eq('id', selectedProspect.id)
+
+    if (!updateError) {
+      await supabase.from('workflow_events').insert({
+        entity_type: 'prospect',
+        entity_id: selectedProspect.id,
+        event_type: 'opt_out',
+        actor_user_id: currentUserId,
+        details: { source: 'manual_review', reason: 'Marked opt-out by authorized staff' },
+      })
+
+      await fetchProspects()
+      setSelectedProspect((current) => current ? { ...current, workflow_status: 'opt_out_review', d9_connection_status: 'opt_out', consent_status: 'opt_out' } : current)
+    }
+  }
+
+  const handleLinkProspectToBusiness = async (businessId: string) => {
+    if (!selectedProspect || !supabase || !businessId) return
+
+    await supabase.from('workflow_events').insert({
+      entity_type: 'prospect',
+      entity_id: selectedProspect.id,
+      event_type: 'matched',
+      actor_user_id: currentUserId,
+      details: { linked_business_id: businessId, match_type: 'canonical_business_link' },
+    })
+
+    await fetchProspects()
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Discovery</p>
+          <h1>Prospects</h1>
+        </div>
+        <button type="button" className="primary-button">Add prospect</button>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Quick prospect intake</h2></div>
+        <form className="stack-form" onSubmit={handleSaveProspect}>
+          <div className="form-grid two-col">
+            <label className="field">
+              <span>Business name</span>
+              <input aria-label="Business name" value={form.business_name} onChange={(event) => handleInputChange('business_name', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Primary contact</span>
+              <input aria-label="Primary contact" value={form.primary_contact_name} onChange={(event) => handleInputChange('primary_contact_name', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Email</span>
+              <input aria-label="Email" type="email" value={form.email} onChange={(event) => handleInputChange('email', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Phone</span>
+              <input aria-label="Phone" value={form.phone} onChange={(event) => handleInputChange('phone', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Website</span>
+              <input aria-label="Website" value={form.website} onChange={(event) => handleInputChange('website', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Source URL</span>
+              <input aria-label="Source URL" value={form.source_url} onChange={(event) => handleInputChange('source_url', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>City</span>
+              <input aria-label="City" value={form.city} onChange={(event) => handleInputChange('city', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>State</span>
+              <input aria-label="State" value={form.state} onChange={(event) => handleInputChange('state', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Industry</span>
+              <input aria-label="Industry" value={form.industry} onChange={(event) => handleInputChange('industry', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Workflow status</span>
+              <select aria-label="Workflow status" value={form.workflow_status} onChange={(event) => handleInputChange('workflow_status', event.target.value)}>
+                <option value="new">new</option>
+                <option value="incomplete">incomplete</option>
+                <option value="outreach_needed">outreach_needed</option>
+                <option value="duplicate_review">duplicate_review</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>D9 connection status</span>
+              <select aria-label="D9 connection status" value={form.d9_connection_status} onChange={(event) => handleInputChange('d9_connection_status', event.target.value)}>
+                <option value="unknown">Unknown</option>
+                <option value="known_greek">Known Greek</option>
+                <option value="community_business">Community Business</option>
+                <option value="existing_member">Existing Member</option>
+                <option value="duplicate">Duplicate</option>
+                <option value="opt_out">Opt-out</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Consent status</span>
+              <select aria-label="Consent status" value={form.consent_status} onChange={(event) => handleInputChange('consent_status', event.target.value)}>
+                <option value="unknown">Unknown</option>
+                <option value="allowed">Allowed</option>
+                <option value="restricted">Restricted</option>
+                <option value="pending">Pending</option>
+                <option value="opt_out">Opt-out</option>
+              </select>
+            </label>
+          </div>
+
+          {saveError && <div className="login-alert login-alert-error" role="alert"><strong>Duplicate detected</strong><span>{saveError}</span></div>}
+          {saveStatus && <div className="login-alert" role="alert"><strong>Prospect saved</strong><span>{saveStatus}</span></div>}
+
+          <div className="form-actions">
+            <button type="submit" className="primary-button" disabled={saving}>
+              {saving ? 'Saving...' : 'Save prospect'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Prospect roster</h2>
+          <div className="header-inline-actions">
+            <input aria-label="Search prospects" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search prospects" />
+            <select aria-label="Filter status" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }}>
+              <option value="all">All statuses</option>
+              <option value="new">new</option>
+              <option value="incomplete">incomplete</option>
+              <option value="outreach_needed">outreach_needed</option>
+              <option value="duplicate_review">duplicate_review</option>
+            </select>
+            <select aria-label="Sort by" value={sortKey} onChange={(event) => setSortKey(event.target.value)}>
+              <option value="created_at">Newest</option>
+              <option value="business_name">Business name</option>
+              <option value="workflow_status">Workflow status</option>
+            </select>
+          </div>
+        </div>
+
+        {loading ? <p>Loading prospects...</p> : (
+          <table className="data-table">
+            <thead>
+              <tr><th>Business</th><th>Contact</th><th>Location</th><th>D9 status</th><th>Workflow</th></tr>
+            </thead>
+            <tbody>
+              {pagedProspects.length ? pagedProspects.map((prospect) => (
+                <tr key={prospect.id} onClick={() => setSelectedProspect(prospect)} className="clickable-row">
+                  <td>
+                    <strong>{prospect.business_name || prospect.display_name}</strong>
+                    <div>{prospect.email || 'No email'}</div>
+                  </td>
+                  <td>{prospect.primary_contact_name || '—'}</td>
+                  <td>{[prospect.city, prospect.state].filter(Boolean).join(', ') || '—'}</td>
+                  <td><span className="pill neutral">{prospect.d9_connection_status || 'unknown'}</span></td>
+                  <td>{prospect.workflow_status}</td>
+                </tr>
+              )) : <tr><td colSpan={5}>No prospects match the current filters.</td></tr>}
+            </tbody>
+          </table>
+        )}
+
+        <div className="pager">
+          <button type="button" className="ghost-button" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
+          <span>Page {currentPage} of {totalPages}</span>
+          <button type="button" className="ghost-button" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>Next</button>
+        </div>
+      </div>
+
+      {selectedProspect && (
+        <div className="panel">
+          <div className="panel-header"><h2>Prospect detail</h2></div>
+          <div className="stack-form">
+            <div className="form-grid two-col">
+              <label className="field">
+                <span>Business name</span>
+                <input value={selectedProspectDraft.business_name ?? selectedProspect.business_name ?? ''} onChange={(event) => handleSelectedProspectDraftChange('business_name', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>Primary contact</span>
+                <input value={selectedProspectDraft.primary_contact_name ?? selectedProspect.primary_contact_name ?? ''} onChange={(event) => handleSelectedProspectDraftChange('primary_contact_name', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>Email</span>
+                <input value={selectedProspectDraft.email ?? selectedProspect.email ?? ''} onChange={(event) => handleSelectedProspectDraftChange('email', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>Phone</span>
+                <input value={selectedProspectDraft.phone ?? selectedProspect.phone ?? ''} onChange={(event) => handleSelectedProspectDraftChange('phone', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>Workflow</span>
+                <select value={selectedProspectDraft.workflow_status ?? selectedProspect.workflow_status ?? 'new'} onChange={(event) => handleSelectedProspectDraftChange('workflow_status', event.target.value)}>
+                  <option value="new">new</option>
+                  <option value="outreach_needed">outreach_needed</option>
+                  <option value="duplicate_review">duplicate_review</option>
+                  <option value="opt_out_review">opt_out_review</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>D9 status</span>
+                <select value={selectedProspectDraft.d9_connection_status ?? selectedProspect.d9_connection_status ?? 'unknown'} onChange={(event) => handleSelectedProspectDraftChange('d9_connection_status', event.target.value)}>
+                  <option value="unknown">Unknown</option>
+                  <option value="known_greek">Known Greek</option>
+                  <option value="community_business">Community Business</option>
+                  <option value="existing_member">Existing Member</option>
+                  <option value="duplicate">Duplicate</option>
+                  <option value="opt_out">Opt-out</option>
+                </select>
+              </label>
+            </div>
+            <div className="form-actions">
+              <button type="button" className="primary-button" onClick={() => void handleUpdateSelectedProspect()}>Save changes</button>
+              <button type="button" className="ghost-button" onClick={() => void handleOptOutSelectedProspect()}>Mark opt-out</button>
+            </div>
+          </div>
+
+          <div className="panel-header compact"><h3>Link to canonical business</h3></div>
+          <div className="header-inline-actions">
+            <select aria-label="Link to canonical business" value={selectedProspectDraft.business_name ?? selectedProspect.business_name ?? ''} onChange={(event) => { const selected = businessOptions.find((option) => option.display_name === event.target.value); if (selected) { void handleLinkProspectToBusiness(selected.id) } }}>
+              <option value="">No business selected</option>
+              {businessOptions.map((business) => (
+                <option key={business.id} value={business.display_name}>{business.display_name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="panel-header compact"><h3>History</h3></div>
+          <ul className="activity-feed">
+            {selectedProspectHistory.length ? selectedProspectHistory.map((event) => (
+              <li key={event.id}>{event.event_type} · {new Date(event.created_at).toLocaleString()}</li>
+            )) : <li>No prospect events recorded yet.</li>}
+          </ul>
+
+          {selectedProspectOptOuts.length > 0 && (
+            <>
+              <div className="panel-header compact"><h3>Opt-out records</h3></div>
+              <ul className="activity-feed">
+                {selectedProspectOptOuts.map((optOut) => (
+                  <li key={optOut.id}>{optOut.source} · {optOut.opt_out_reason || 'Opted out'} · {new Date(optOut.created_at).toLocaleString()}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BusinessesPage() {
+  const [businesses, setBusinesses] = useState<Array<{ id: string; display_name: string; website?: string; industry?: string; d9_connection_status?: string; city?: string; state?: string; profile_completeness?: number }>>([])
+  const [prospects, setProspects] = useState<Array<{ id: string; business_name?: string; display_name?: string; primary_contact_name?: string | null; email?: string | null }>>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [form, setForm] = useState({ display_name: '', website: '', industry: '', city: '', state: '', d9_connection_status: 'unknown' })
+  const [selectedBusiness, setSelectedBusiness] = useState<{ id: string; display_name: string; website?: string; industry?: string; d9_connection_status?: string; city?: string; state?: string; profile_completeness?: number } | null>(null)
+
+  const loadBusinesses = async () => {
+    if (!supabase) {
+      setBusinesses([])
+      setLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('businesses')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      setBusinesses([])
+      setLoading(false)
+      return
+    }
+
+    setBusinesses((data ?? []) as Array<{ id: string; display_name: string; website?: string; industry?: string; d9_connection_status?: string; city?: string; state?: string; profile_completeness?: number }>)
+    setLoading(false)
+  }
+
+  const loadProspects = async () => {
+    if (!supabase) return
+
+    const { data } = await supabase.from('prospects').select('*').order('created_at', { ascending: false })
+    setProspects((data ?? []) as Array<{ id: string; business_name?: string; display_name?: string; primary_contact_name?: string | null; email?: string | null }>)
+  }
+
+  useEffect(() => {
+    void loadBusinesses()
+    void loadProspects()
+  }, [])
+
+  const filteredBusinesses = businesses.filter((business) => {
+    const matchesStatus = statusFilter === 'all' || (business.d9_connection_status ?? 'unknown') === statusFilter
+    const haystack = [business.display_name, business.industry, business.city, business.state].join(' ').toLowerCase()
+    const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase())
+    return matchesStatus && matchesSearch
+  })
+
+  const linkedProspects = selectedBusiness ? prospects.filter((prospect) => {
+    const target = selectedBusiness.display_name.toLowerCase()
+    return [prospect.business_name, prospect.display_name].filter(Boolean).some((value) => (value ?? '').toLowerCase() === target)
+  }) : []
+
+  const profileCompletion = selectedBusiness ? Math.min(100, Math.max(0, Math.round(((selectedBusiness.display_name ? 25 : 0) + (selectedBusiness.website ? 25 : 0) + (selectedBusiness.industry ? 25 : 0) + (selectedBusiness.city || selectedBusiness.state ? 25 : 0))))) : 0
+
+  const handleSaveBusiness = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!supabase) return
+
+    const payload = {
+      display_name: form.display_name,
+      website: form.website || null,
+      industry: form.industry || null,
+      city: form.city || null,
+      state: form.state || null,
+      d9_connection_status: form.d9_connection_status,
+      profile_completeness: 0,
+    }
+
+    if (selectedBusiness) {
+      await supabase.from('businesses').update(payload).eq('id', selectedBusiness.id)
+    } else {
+      await supabase.from('businesses').insert(payload)
+    }
+
+    setForm({ display_name: '', website: '', industry: '', city: '', state: '', d9_connection_status: 'unknown' })
+    setSelectedBusiness(null)
+    await loadBusinesses()
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Discovery</p>
+          <h1>Businesses</h1>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Canonical business record</h2></div>
+        <form className="stack-form" onSubmit={handleSaveBusiness}>
+          <div className="form-grid two-col">
+            <label className="field"><span>Display name</span><input value={form.display_name} onChange={(event) => setForm((current) => ({ ...current, display_name: event.target.value }))} /></label>
+            <label className="field"><span>Website</span><input value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} /></label>
+            <label className="field"><span>Industry</span><input value={form.industry} onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))} /></label>
+            <label className="field"><span>Workflow status</span><select value={form.d9_connection_status} onChange={(event) => setForm((current) => ({ ...current, d9_connection_status: event.target.value }))}><option value="unknown">Unknown</option><option value="known_greek">Known Greek</option><option value="community_business">Community business</option><option value="existing_member">Existing member</option><option value="duplicate">Duplicate</option><option value="opt_out">Opt-out</option></select></label>
+            <label className="field"><span>City</span><input value={form.city} onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))} /></label>
+            <label className="field"><span>State</span><input value={form.state} onChange={(event) => setForm((current) => ({ ...current, state: event.target.value }))} /></label>
+          </div>
+          <div className="form-actions">
+            <button type="submit" className="primary-button">{selectedBusiness ? 'Save business' : 'Create business'}</button>
+            {selectedBusiness && <button type="button" className="ghost-button" onClick={() => setSelectedBusiness(null)}>Clear</button>}
+          </div>
+        </form>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Business roster</h2>
+          <div className="header-inline-actions">
+            <input aria-label="Search businesses" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search businesses" />
+            <select aria-label="Filter business status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="unknown">Unknown</option>
+              <option value="known_greek">Known Greek</option>
+              <option value="community_business">Community business</option>
+              <option value="existing_member">Existing member</option>
+              <option value="duplicate">Duplicate</option>
+              <option value="opt_out">Opt-out</option>
+            </select>
+          </div>
+        </div>
+
+        {loading ? <div className="panel empty-state"><h2>Loading businesses</h2><p>Restoring the canonical operating record set.</p></div> : filteredBusinesses.length ? (
+          <div className="cards-grid equal-grid">
+            {filteredBusinesses.map((business) => (
+              <article key={business.id} className="panel card-panel" onClick={() => setSelectedBusiness(business)}>
+                <div className="panel-header compact">
+                  <h3>{business.display_name}</h3>
+                  <span className="pill navy">{normalizeText(classifyD9Status({ d9ConnectionStatus: (business.d9_connection_status as 'known_greek' | 'unknown' | 'community_business' | 'existing_member' | 'duplicate' | 'opt_out') ?? 'unknown' })).replace(/_/g, ' ')}</span>
+                </div>
+                <dl className="meta-list">
+                  <div><dt>Website</dt><dd>{normalizeWebsite(business.website)}</dd></div>
+                  <div><dt>Industry</dt><dd>{business.industry || 'Not specified'}</dd></div>
+                  <div><dt>Location</dt><dd>{[business.city, business.state].filter(Boolean).join(', ') || 'Not specified'}</dd></div>
+                  <div><dt>Profile</dt><dd>{business.profile_completeness ?? 0}%</dd></div>
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="panel empty-state"><h2>No canonical businesses</h2><p>Business records will appear here after a verified record is created or imported.</p></div>
+        )}
+      </div>
+
+      {selectedBusiness && (
+        <div className="panel">
+          <div className="panel-header"><h2>{selectedBusiness.display_name} · profile</h2><span className="pill navy">{profileCompletion}% complete</span></div>
+          <div className="meta-list">
+            <div><dt>Website</dt><dd>{normalizeWebsite(selectedBusiness.website)}</dd></div>
+            <div><dt>Industry</dt><dd>{selectedBusiness.industry || 'Not specified'}</dd></div>
+            <div><dt>Location</dt><dd>{[selectedBusiness.city, selectedBusiness.state].filter(Boolean).join(', ') || 'Not specified'}</dd></div>
+            <div><dt>Routing</dt><dd>{getWorkflowRoutingLabel(selectedBusiness.d9_connection_status)}</dd></div>
+          </div>
+
+          <div className="panel-header compact"><h3>Linked prospects</h3></div>
+          <ul className="activity-feed">
+            {linkedProspects.length ? linkedProspects.map((prospect) => <li key={prospect.id}>{prospect.business_name || prospect.display_name || 'Prospect'} · {prospect.primary_contact_name || prospect.email || 'No contact'}</li>) : <li>No linked prospects yet.</li>}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NominationsPage() {
+  const [nominations, setNominations] = useState<Array<{ id: string; nominated_business_name: string; source?: string; reason?: string; review_status?: string }>>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadNominations = async () => {
+      if (!supabase) {
+        setNominations([])
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase.from('nominations').select('*').order('created_at', { ascending: false })
+      if (error) {
+        setNominations([])
+        setLoading(false)
+        return
+      }
+
+      setNominations((data ?? []) as Array<{ id: string; nominated_business_name: string; source?: string; reason?: string; review_status?: string }>)
+      setLoading(false)
+    }
+
+    void loadNominations()
+  }, [])
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Discovery</p>
+          <h1>Nominations</h1>
+        </div>
+        <button type="button" className="primary-button">Review nominations</button>
+      </div>
+      {loading ? (
+        <div className="panel empty-state"><h2>Loading nominations</h2><p>Restoring the review queue.</p></div>
+      ) : nominations.length ? (
+        <div className="panel table-panel">
+          <table className="data-table">
+            <thead>
+              <tr><th>Business</th><th>Source</th><th>Status</th><th>Reason</th></tr>
+            </thead>
+            <tbody>
+              {nominations.map((nomination) => (
+                <tr key={nomination.id}>
+                  <td>{nomination.nominated_business_name}</td>
+                  <td>{nomination.source || '—'}</td>
+                  <td><span className="pill neutral">{nomination.review_status || 'new'}</span></td>
+                  <td>{nomination.reason || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="panel empty-state">
+          <h2>No nominations yet</h2>
+          <p>Incoming nominations will appear here once they are submitted or imported.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ImportsPage() {
+  const [fileName, setFileName] = useState('')
+  const [rows, setRows] = useState<Array<{ rowNumber: number; values: string[]; valid: boolean; errors: string[] }>>([])
+  const [status, setStatus] = useState('Awaiting file')
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const text = await file.text()
+    const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
+    if (!lines.length) {
+      setFileName(file.name)
+      setRows([])
+      setStatus('No rows detected')
+      return
+    }
+
+    const header = lines[0].split(',').map((cell) => cell.trim())
+    const parsed = lines.slice(1).map((line, index) => {
+      const values = line.split(',').map((cell) => cell.trim())
+      const missing = header.filter((_, headerIndex) => !values[headerIndex])
+      const hasValidEmail = values[2] ? /@/.test(values[2]) : true
+      const errors = [] as string[]
+
+      if (missing.length) {
+        errors.push('Missing required values')
+      }
+
+      if (!hasValidEmail) {
+        errors.push('Email is invalid')
+      }
+
+      return {
+        rowNumber: index + 2,
+        values,
+        valid: !errors.length,
+        errors,
+      }
+    })
+
+    setFileName(file.name)
+    setRows(parsed)
+    setStatus(parsed.some((row) => !row.valid) ? 'Validation issues found' : 'Ready to commit')
+  }
+
+  const validRows = rows.filter((row) => row.valid).length
+  const invalidRows = rows.length - validRows
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Discovery</p>
+          <h1>Imports</h1>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <h2>CSV import</h2>
+          <span className="pill navy">{status}</span>
+        </div>
+
+        <div className="stack-form">
+          <label className="field">
+            <span>Upload a CSV file</span>
+            <input type="file" accept=".csv,text/csv" onChange={(event) => void handleFileUpload(event)} />
+          </label>
+        </div>
+
+        {fileName ? (
+          <div className="list-row">
+            <div>
+              <strong>{fileName}</strong>
+              <span>{validRows} valid rows · {invalidRows} invalid rows</span>
+            </div>
+          </div>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No import uploaded</h2>
+            <p>Upload a CSV file to preview columns and validation results before committing.</p>
+          </div>
+        )}
+      </div>
+
+      {rows.length > 0 && (
+        <div className="panel table-panel">
+          <table className="data-table">
+            <thead>
+              <tr><th>Row</th><th>Values</th><th>Status</th><th>Errors</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.rowNumber}>
+                  <td>{row.rowNumber}</td>
+                  <td>{row.values.join(' | ') || '—'}</td>
+                  <td><span className={`pill ${row.valid ? 'navy' : 'neutral'}`}>{row.valid ? 'Valid' : 'Invalid'}</span></td>
+                  <td>{row.errors.length ? row.errors.join(', ') : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DuplicateReviewPage() {
+  const [duplicates, setDuplicates] = useState<Array<{ id: string; entity_type: string; match_reason: string; confidence_level: string; review_status?: string; field_conflicts?: string[]; decision?: string }>>([])
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const loadDuplicates = async () => {
+    if (!supabase) {
+      setDuplicates([])
+      setLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('possible_duplicates')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      setDuplicates([])
+      setLoading(false)
+      return
+    }
+
+    setDuplicates((data ?? []) as Array<{ id: string; entity_type: string; match_reason: string; confidence_level: string; review_status?: string; field_conflicts?: string[]; decision?: string }>)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    void loadDuplicates()
+  }, [])
+
+  const handleDuplicateDecision = async (duplicateId: string, decision: 'keep_separate' | 'merge' | 'dismiss' | 'manual_review') => {
+    if (!supabase) return
+
+    await supabase.from('possible_duplicates').update({
+      review_status: decision,
+      decision: decision,
+      updated_at: new Date().toISOString(),
+    }).eq('id', duplicateId)
+
+    await loadDuplicates()
+  }
+
+  const filteredDuplicates = duplicates.filter((duplicate) => statusFilter === 'all' || (duplicate.review_status || 'pending') === statusFilter)
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Review</p>
+          <h1>Duplicate Review</h1>
+        </div>
+        <select aria-label="Filter duplicate status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <option value="all">All decisions</option>
+          <option value="pending">Pending</option>
+          <option value="manual_review">Manual review</option>
+          <option value="merge">Merge</option>
+          <option value="dismiss">Dismiss</option>
+          <option value="keep_separate">Keep separate</option>
+        </select>
+      </div>
+      {loading ? (
+        <div className="panel empty-state"><h2>Loading duplicates</h2><p>Checking for matching records and review candidates.</p></div>
+      ) : filteredDuplicates.length ? (
+        <div className="panel table-panel">
+          <table className="data-table">
+            <thead>
+              <tr><th>Entity</th><th>Match reason</th><th>Confidence</th><th>Conflicts</th><th>Status</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              {filteredDuplicates.map((duplicate) => (
+                <tr key={duplicate.id}>
+                  <td>{duplicate.entity_type}</td>
+                  <td>{duplicate.match_reason}</td>
+                  <td><span className="pill neutral">{duplicate.confidence_level}</span></td>
+                  <td>{(duplicate.field_conflicts ?? []).join(', ') || 'None detected'}</td>
+                  <td><span className="pill navy">{duplicate.review_status || 'pending'}</span></td>
+                  <td>
+                    <div className="header-inline-actions">
+                      <button type="button" className="ghost-button" onClick={() => void handleDuplicateDecision(duplicate.id, 'keep_separate')}>Keep separate</button>
+                      <button type="button" className="ghost-button" onClick={() => void handleDuplicateDecision(duplicate.id, 'merge')}>Merge</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="panel empty-state">
+          <h2>No duplicate review items</h2>
+          <p>Potential duplicate matches will appear here after routing or import matching is run.</p>
+        </div>
+      )}
     </div>
   )
 }
 
 function CampaignPage() {
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; status: string; campaign_type?: string; source_channel?: string }>>([])
+  const [loading, setLoading] = useState(true)
+  const [name, setName] = useState('')
+  const [status, setStatus] = useState('draft')
+  const [saving, setSaving] = useState(false)
+
+  const loadCampaigns = async () => {
+    if (!supabase) {
+      setCampaigns([])
+      setLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false })
+    if (error) {
+      setCampaigns([])
+      setLoading(false)
+      return
+    }
+
+    setCampaigns((data ?? []) as Array<{ id: string; name: string; status: string; campaign_type?: string; source_channel?: string }>)
+    setLoading(false)
+  }
+
+  useEffect(() => { void loadCampaigns() }, [])
+
+  const handleCreateCampaign = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!supabase || !name.trim()) return
+
+    setSaving(true)
+    const { error } = await supabase.from('campaigns').insert({ name: name.trim(), status, campaign_type: 'discovery' })
+    setSaving(false)
+
+    if (!error) {
+      setName('')
+      setStatus('draft')
+      await loadCampaigns()
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -719,30 +1936,56 @@ function CampaignPage() {
           <h1>Campaigns</h1>
         </div>
       </div>
-      <div className="panel empty-state">
-        <h2>Milestone 2 campaign workspace</h2>
-        <p>This module will be activated once the public intake and routing foundation is complete.</p>
-      </div>
-    </div>
-  )
-}
 
-function PlaceholderPage({ moduleName, purpose, milestone, relatedSystem }: { moduleName: string; purpose: string; milestone: string; relatedSystem: string }) {
-  return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Future milestone</p>
-          <h1>{moduleName}</h1>
+      <div className="panel">
+        <div className="panel-header"><h2>Create campaign</h2></div>
+        <form className="stack-form" onSubmit={handleCreateCampaign}>
+          <div className="form-grid two-col">
+            <label className="field">
+              <span>Campaign name</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Neighborhood outreach" />
+            </label>
+            <label className="field">
+              <span>Status</span>
+              <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="draft">draft</option>
+                <option value="active">active</option>
+                <option value="paused">paused</option>
+                <option value="completed">completed</option>
+              </select>
+            </label>
+          </div>
+          <div className="form-actions">
+            <button type="submit" className="primary-button" disabled={saving || !name.trim()}>{saving ? 'Saving…' : 'Save campaign'}</button>
+          </div>
+        </form>
+      </div>
+
+      {loading ? (
+        <div className="panel empty-state"><h2>Loading campaigns</h2><p>Restoring the active campaign portfolio.</p></div>
+      ) : campaigns.length ? (
+        <div className="panel table-panel">
+          <table className="data-table">
+            <thead>
+              <tr><th>Name</th><th>Type</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {campaigns.map((campaign) => (
+                <tr key={campaign.id}>
+                  <td>{campaign.name}</td>
+                  <td>{campaign.campaign_type || 'discovery'}</td>
+                  <td><span className="pill navy">{campaign.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
-      <div className="panel module-placeholder">
-        <div className="placeholder-tag">Not yet active</div>
-        <h2>{moduleName}</h2>
-        <p><strong>Purpose:</strong> {purpose}</p>
-        <p><strong>Planned milestone:</strong> {milestone}</p>
-        <p><strong>Related system or integration:</strong> {relatedSystem}</p>
-      </div>
+      ) : (
+        <div className="panel empty-state">
+          <h2>No campaign records</h2>
+          <p>Campaign records will appear here once discovery outreach is launched.</p>
+        </div>
+      )}
     </div>
   )
 }
