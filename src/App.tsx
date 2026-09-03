@@ -19,10 +19,12 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import './App.css'
 import { classifyD9Status, getWorkflowRoutingLabel, normalizeText, normalizeWebsite } from './lib/discovery'
-import { isSupabaseConfigured, supabase, supabaseStatusMessage } from './lib/supabaseClient'
+import { CSV_TEMPLATE_HEADERS, buildImportSummary, createIdempotencyKey, parseCsvRows, requiresConfirmation, validateCsvRow } from './lib/imports'
+import { canProcessNomination, normalizeNomination, screenNominationForDuplicate, validateNominationDecision, validateNominationTransition } from './lib/nomination'
+import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
 
 type NavItem = {
   label: string
@@ -81,6 +83,55 @@ function AppRoot() {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [signingIn, setSigningIn] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') {
+      return {
+        Overview: true,
+        Discovery: true,
+        Verification: true,
+        'Social Engagement': false,
+        Integrations: false,
+        Administration: false,
+      }
+    }
+
+    try {
+      const stored = window.localStorage.getItem('d9network-nav-expanded')
+      if (!stored) {
+        return {
+          Overview: true,
+          Discovery: true,
+          Verification: true,
+          'Social Engagement': false,
+          Integrations: false,
+          Administration: false,
+        }
+      }
+      return { ...{
+        Overview: true,
+        Discovery: true,
+        Verification: true,
+        'Social Engagement': false,
+        Integrations: false,
+        Administration: false,
+      }, ...JSON.parse(stored) }
+    } catch {
+      return {
+        Overview: true,
+        Discovery: true,
+        Verification: true,
+        'Social Engagement': false,
+        Integrations: false,
+        Administration: false,
+      }
+    }
+  })
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('d9network-nav-expanded', JSON.stringify(expandedSections))
+    }
+  }, [expandedSections])
 
   useEffect(() => {
     const client = supabase
@@ -280,6 +331,8 @@ function AppRoot() {
               setMobileNavOpen={setMobileNavOpen}
               onSignOut={handleSignOut}
               signingOut={signingOut}
+              expandedSections={expandedSections}
+              setExpandedSections={setExpandedSections}
             >
               <DashboardPage />
             </AuthenticatedAppShell>
@@ -290,7 +343,7 @@ function AppRoot() {
         path="/queue"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <WorkQueuePage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -300,7 +353,7 @@ function AppRoot() {
         path="/campaigns"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <CampaignPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -310,7 +363,7 @@ function AppRoot() {
         path="/verification"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <VerificationQueuePage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -320,7 +373,7 @@ function AppRoot() {
         path="/prospects"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <ProspectsPage currentUserId={session?.user?.id ?? null} />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -330,7 +383,7 @@ function AppRoot() {
         path="/businesses"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <BusinessesPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -340,7 +393,7 @@ function AppRoot() {
         path="/nominations"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <NominationsPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -350,7 +403,7 @@ function AppRoot() {
         path="/imports"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <ImportsPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -360,7 +413,7 @@ function AppRoot() {
         path="/duplicate-review"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <DuplicateReviewPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -370,7 +423,7 @@ function AppRoot() {
         path="/integrations"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <IntegrationsPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -380,7 +433,7 @@ function AppRoot() {
         path="/organization-settings"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={true}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <SettingsPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -390,7 +443,7 @@ function AppRoot() {
         path="/audit-log"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={true}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <AuditPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -400,7 +453,7 @@ function AppRoot() {
         path="/admin/users"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={true}>
-            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <UsersAndRolesPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
@@ -558,6 +611,8 @@ function AuthenticatedAppShell({
   setMobileNavOpen,
   onSignOut,
   signingOut,
+  expandedSections,
+  setExpandedSections,
   children,
 }: {
   navGroups: NavGroup[]
@@ -567,8 +622,27 @@ function AuthenticatedAppShell({
   setMobileNavOpen: (value: boolean) => void
   onSignOut: () => Promise<void>
   signingOut: boolean
+  expandedSections: Record<string, boolean>
+  setExpandedSections: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
   children: React.ReactNode
 }) {
+  const location = useLocation()
+
+  useEffect(() => {
+    const activeGroup = navGroups.find((group) => group.items.some((item) => item.to === location.pathname))
+    if (!activeGroup || !activeGroup.label) {
+      return
+    }
+
+    setExpandedSections((current: Record<string, boolean>) => {
+      if (current[activeGroup.label] === true) {
+        return current
+      }
+
+      return { ...current, [activeGroup.label]: true }
+    })
+  }, [location.pathname, navGroups, setExpandedSections])
+
   return (
     <div className="app-shell">
       <button type="button" className="mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileNavOpen(true)}>
@@ -590,25 +664,38 @@ function AuthenticatedAppShell({
         </div>
 
         <nav className="nav-groups" aria-label="Navigation groups">
-          {navGroups.map((group) => (
-            <div key={group.label} className="nav-group">
-              <div className="nav-group-label">{group.label}</div>
-              <div className="nav-items">
-                {group.items.map(({ label, icon: Icon, to, future, requiresAdmin }) => (
-                  <NavLink
-                    key={label}
-                    to={to}
-                    onClick={() => setMobileNavOpen(false)}
-                    className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''} ${future ? 'nav-item-future' : ''} ${requiresAdmin ? 'nav-item-admin' : ''}`}
-                  >
-                    <Icon size={18} />
-                    <span>{label}</span>
-                    {future && <span className="coming-soon">Later</span>}
-                  </NavLink>
-                ))}
+          {navGroups.map((group) => {
+            const isExpanded = expandedSections[group.label] ?? true
+            return (
+              <div key={group.label} className="nav-group">
+                <button
+                  type="button"
+                  className="nav-group-toggle"
+                  onClick={() => setExpandedSections((current) => ({ ...current, [group.label]: !isExpanded }))}
+                  aria-expanded={isExpanded}
+                >
+                  <span className="nav-group-label">{group.label}</span>
+                  <span className="nav-chevron">{isExpanded ? '▾' : '▸'}</span>
+                </button>
+                {isExpanded && (
+                  <div className="nav-items">
+                    {group.items.map(({ label, icon: Icon, to, future, requiresAdmin }) => (
+                      <NavLink
+                        key={label}
+                        to={to}
+                        onClick={() => setMobileNavOpen(false)}
+                        className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''} ${future ? 'nav-item-future' : ''} ${requiresAdmin ? 'nav-item-admin' : ''}`}
+                      >
+                        <Icon size={18} />
+                        <span>{label}</span>
+                        {future && <span className="coming-soon">Later</span>}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </nav>
       </aside>
 
@@ -659,42 +746,59 @@ function UnauthorizedPage() {
 }
 
 function DashboardPage() {
-  const [stats, setStats] = useState({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0 })
+  const [stats, setStats] = useState({
+    prospects: 0,
+    businesses: 0,
+    campaigns: 0,
+    nominations: 0,
+    openWorkItems: 0,
+    overdueWorkItems: 0,
+    optOuts: 0,
+    duplicates: 0,
+  })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const loadStats = async () => {
-      if (!supabase) {
-        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0 })
+      const client = supabase
+      if (!client) {
+        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0, openWorkItems: 0, overdueWorkItems: 0, optOuts: 0, duplicates: 0 })
         setLoading(false)
         return
       }
 
-      const [prospects, businesses, campaigns, nominations] = await Promise.all([
-        supabase.from('prospects').select('id', { count: 'exact', head: true }),
-        supabase.from('businesses').select('id', { count: 'exact', head: true }),
-        supabase.from('campaigns').select('id', { count: 'exact', head: true }),
-        supabase.from('nominations').select('id', { count: 'exact', head: true }),
+      const countTable = async (tableName: string, modifier?: (query: any) => any) => {
+        const baseQuery = client.from(tableName).select('id', { count: 'exact', head: true })
+        const query = modifier ? modifier(baseQuery) : baseQuery
+        const result = query ? await query : null
+        return result?.count ?? 0
+      }
+
+      const [prospects, businesses, campaigns, nominations, queue, duplicates, optOuts] = await Promise.all([
+        countTable('prospects'),
+        countTable('businesses'),
+        countTable('campaigns'),
+        countTable('nominations'),
+        countTable('workflow_assignments', (query) => typeof query?.neq === 'function' ? query.neq('status', 'completed') : null),
+        countTable('possible_duplicates', (query) => typeof query?.eq === 'function' ? query.eq('review_status', 'pending') : null),
+        countTable('opt_outs'),
       ])
 
       setStats({
-        prospects: prospects?.count ?? 0,
-        businesses: businesses?.count ?? 0,
-        campaigns: campaigns?.count ?? 0,
-        nominations: nominations?.count ?? 0,
+        prospects,
+        businesses,
+        campaigns,
+        nominations,
+        openWorkItems: queue,
+        duplicates,
+        optOuts,
+        overdueWorkItems: 0,
       })
       setLoading(false)
     }
 
     void loadStats()
   }, [])
-
-  const readinessRows = [
-    { label: 'Authentication', detail: 'Protected local session flow', status: 'Configured' },
-    { label: 'Discovery intake', detail: 'Prospect capture and duplicate screening', status: 'Live' },
-    { label: 'Workflow routing', detail: 'Known Greek, unknown, duplicate, opt-out', status: 'Ready' },
-    { label: 'Supabase env', detail: supabaseStatusMessage.includes('not configured') ? 'Pending configuration' : 'Ready', status: supabaseStatusMessage.includes('not configured') ? 'Pending' : 'Ready' },
-  ]
 
   return (
     <div className="page">
@@ -731,17 +835,12 @@ function DashboardPage() {
 
       <section className="content-grid two-col">
         <div className="panel">
-          <div className="panel-header"><h2>Platform readiness</h2></div>
+          <div className="panel-header"><h2>Operational snapshot</h2></div>
           <div className="stack-list">
-            {readinessRows.map((row) => (
-              <div key={row.label} className="list-row">
-                <div>
-                  <strong>{row.label}</strong>
-                  <span>{row.detail}</span>
-                </div>
-                <span className="pill neutral">{row.status}</span>
-              </div>
-            ))}
+            <div className="list-row"><div><strong>Open work items</strong><span>Assigned or awaiting action</span></div><span className="pill neutral">{loading ? '—' : stats.openWorkItems}</span></div>
+            <div className="list-row"><div><strong>Possible duplicates</strong><span>Needs review or resolution</span></div><span className="pill neutral">{loading ? '—' : stats.duplicates}</span></div>
+            <div className="list-row"><div><strong>Recent opt-outs</strong><span>Suppressed outreach records</span></div><span className="pill neutral">{loading ? '—' : stats.optOuts}</span></div>
+            <div className="list-row"><div><strong>Overdue work</strong><span>Needs escalation</span></div><span className="pill neutral">{loading ? '—' : stats.overdueWorkItems}</span></div>
           </div>
         </div>
 
@@ -750,7 +849,7 @@ function DashboardPage() {
           <ul className="activity-feed">
             <li>Prospect intake captures partial data and resolves duplicates before persistence.</li>
             <li>Business and nomination flows are aligned to D9 connection status and review steps.</li>
-            <li>Integration boundaries remain separate from the core discovery engine until live adapters are configured.</li>
+            <li>Campaign, import, and work-queue records are routed through the operational review engine.</li>
           </ul>
         </div>
       </section>
@@ -759,7 +858,7 @@ function DashboardPage() {
 }
 
 function WorkQueuePage() {
-  const [items, setItems] = useState<Array<{ id: string; title: string; owner: string; priority: string; status: string }>>([])
+  const [items, setItems] = useState<Array<{ id: string; title: string; owner: string; priority: string; status: string; due: string }>>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -783,10 +882,11 @@ function WorkQueuePage() {
 
       const mapped = (data ?? []).map((row: any) => ({
         id: row.id,
-        title: `${row.entity_type} review`,
+        title: `${row.entity_type ?? 'record'} review`,
         owner: row.assigned_to ?? 'Unassigned',
         priority: row.priority ?? 'normal',
-        status: row.status ?? 'active',
+        status: row.status ?? 'assigned',
+        due: row.due_at ? new Date(row.due_at).toLocaleDateString() : 'No due date',
       }))
 
       setItems(mapped)
@@ -818,7 +918,7 @@ function WorkQueuePage() {
               <div key={item.id} className="list-row">
                 <div>
                   <strong>{item.title}</strong>
-                  <span>{item.owner}</span>
+                  <span>{item.owner} · {item.due}</span>
                 </div>
                 <div className="header-inline-actions">
                   <span className="pill neutral">{item.priority}</span>
@@ -1617,28 +1717,125 @@ function BusinessesPage() {
 function NominationsPage() {
   const [nominations, setNominations] = useState<Array<{ id: string; nominated_business_name: string; source?: string; reason?: string; review_status?: string }>>([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    nominated_business_name: '',
+    source: 'public_submission',
+    reason: '',
+    nominator_name: '',
+    nominator_email: '',
+    city: '',
+    state: '',
+    website: '',
+  })
 
-  useEffect(() => {
-    const loadNominations = async () => {
-      if (!supabase) {
-        setNominations([])
-        setLoading(false)
-        return
-      }
-
-      const { data, error } = await supabase.from('nominations').select('*').order('created_at', { ascending: false })
-      if (error) {
-        setNominations([])
-        setLoading(false)
-        return
-      }
-
-      setNominations((data ?? []) as Array<{ id: string; nominated_business_name: string; source?: string; reason?: string; review_status?: string }>)
+  const loadNominations = async () => {
+    if (!supabase) {
+      setNominations([])
       setLoading(false)
+      return
     }
 
-    void loadNominations()
-  }, [])
+    const { data, error } = await supabase.from('nominations').select('*').order('created_at', { ascending: false })
+    if (error) {
+      setNominations([])
+      setLoading(false)
+      return
+    }
+
+    setNominations((data ?? []) as Array<{ id: string; nominated_business_name: string; source?: string; reason?: string; review_status?: string }>)
+    setLoading(false)
+  }
+
+  useEffect(() => { void loadNominations() }, [])
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!supabase || !form.nominated_business_name.trim()) return
+
+    const normalized = normalizeNomination({
+      nominatedBusinessName: form.nominated_business_name,
+      primaryContactName: form.nominator_name,
+      email: form.nominator_email,
+      source: form.source,
+      businessName: form.nominated_business_name,
+      status: 'submitted',
+      decisionReason: form.reason,
+      phone: '',
+      website: form.website,
+      reportedD9Status: 'unknown',
+    })
+
+    if (!canProcessNomination({ status: normalized.status })) {
+      return
+    }
+
+    const duplicateSignal = screenNominationForDuplicate({
+      nominatedBusinessName: normalized.nominatedBusinessName,
+      email: normalized.email,
+      website: normalized.website,
+      phone: normalized.phone,
+    })
+
+    setSaving(true)
+
+    const payload = {
+      nominated_business_name: normalized.nominatedBusinessName,
+      source: normalized.source,
+      reason: normalized.decisionReason || 'No reason supplied',
+      nominator_name: normalized.primaryContactName || null,
+      nominator_email: normalized.email || null,
+      created_by: null,
+      review_status: duplicateSignal.duplicate ? 'duplicate_review' : 'submitted',
+      known_d9_connection: null,
+      permission_status: duplicateSignal.duplicate ? 'pending' : 'pending',
+    }
+
+    const { data, error } = await supabase.from('nominations').insert(payload).select('id')
+
+    setSaving(false)
+
+    if (!error && data?.[0]?.id) {
+      await supabase.from('workflow_events').insert({
+        entity_type: 'nomination',
+        entity_id: data[0].id,
+        event_type: duplicateSignal.duplicate ? 'duplicate_review' : 'submitted',
+        actor_user_id: null,
+        details: { source: payload.source, reason: payload.reason, duplicate: duplicateSignal.duplicate },
+      })
+      setForm({
+        nominated_business_name: '',
+        source: 'public_submission',
+        reason: '',
+        nominator_name: '',
+        nominator_email: '',
+        city: '',
+        state: '',
+        website: '',
+      })
+      await loadNominations()
+    }
+  }
+
+  const updateStatus = async (id: string, nextStatus: string) => {
+    if (!supabase) return
+
+    const next = nextStatus as any
+    const allowed = validateNominationTransition('submitted', next)
+    if (!allowed && next === 'rejected') {
+      const reason = window.prompt('Provide the reason for rejection:') ?? ''
+      if (!validateNominationDecision('rejected', reason)) {
+        return
+      }
+    }
+
+    if (next === 'rejected' && !validateNominationDecision('rejected', window.prompt('Provide the reason for rejection:') ?? '')) {
+      return
+    }
+
+    await supabase.from('nominations').update({ review_status: next, updated_at: new Date().toISOString() }).eq('id', id)
+    await loadNominations()
+  }
 
   return (
     <div className="page">
@@ -1647,23 +1844,42 @@ function NominationsPage() {
           <p className="eyebrow">Discovery</p>
           <h1>Nominations</h1>
         </div>
-        <button type="button" className="primary-button">Review nominations</button>
+        <button type="button" className="primary-button">Review nomination</button>
       </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Submit nomination</h2></div>
+        <form className="stack-form" onSubmit={handleSubmit}>
+          <div className="form-grid two-col">
+            <label className="field"><span>Business name</span><input aria-label="Business name" value={form.nominated_business_name} onChange={(event) => setForm((current) => ({ ...current, nominated_business_name: event.target.value }))} /></label>
+            <label className="field"><span>Source</span><select aria-label="Source" value={form.source} onChange={(event) => setForm((current) => ({ ...current, source: event.target.value }))}><option value="public_submission">public_submission</option><option value="internal_staff">internal_staff</option><option value="social_media">social_media</option><option value="campaign_referral">campaign_referral</option><option value="partner_referral">partner_referral</option><option value="member_referral">member_referral</option><option value="manual_entry">manual_entry</option></select></label>
+            <label className="field"><span>Nominator name</span><input aria-label="Nominator name" value={form.nominator_name} onChange={(event) => setForm((current) => ({ ...current, nominator_name: event.target.value }))} /></label>
+            <label className="field"><span>Nominator email</span><input aria-label="Nominator email" type="email" value={form.nominator_email} onChange={(event) => setForm((current) => ({ ...current, nominator_email: event.target.value }))} /></label>
+            <label className="field"><span>City</span><input aria-label="City" value={form.city} onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))} /></label>
+            <label className="field"><span>State</span><input aria-label="State" value={form.state} onChange={(event) => setForm((current) => ({ ...current, state: event.target.value }))} /></label>
+            <label className="field"><span>Website</span><input aria-label="Website" value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} /></label>
+            <label className="field wide"><span>Nomination reason</span><textarea aria-label="Nomination reason" value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} rows={3} /></label>
+          </div>
+          <div className="form-actions"><button type="submit" className="primary-button" disabled={saving || !form.nominated_business_name.trim()}>{saving ? 'Submitting...' : 'Submit nomination'}</button></div>
+        </form>
+      </div>
+
       {loading ? (
         <div className="panel empty-state"><h2>Loading nominations</h2><p>Restoring the review queue.</p></div>
       ) : nominations.length ? (
         <div className="panel table-panel">
           <table className="data-table">
             <thead>
-              <tr><th>Business</th><th>Source</th><th>Status</th><th>Reason</th></tr>
+              <tr><th>Business</th><th>Source</th><th>Status</th><th>Reason</th><th>Action</th></tr>
             </thead>
             <tbody>
               {nominations.map((nomination) => (
                 <tr key={nomination.id}>
                   <td>{nomination.nominated_business_name}</td>
                   <td>{nomination.source || '—'}</td>
-                  <td><span className="pill neutral">{nomination.review_status || 'new'}</span></td>
+                  <td><span className="pill neutral">{nomination.review_status || 'submitted'}</span></td>
                   <td>{nomination.reason || '—'}</td>
+                  <td><div className="header-inline-actions"><button type="button" className="ghost-button" onClick={() => void updateStatus(nomination.id, 'under_review')}>Review</button><button type="button" className="ghost-button" onClick={() => void updateStatus(nomination.id, 'accepted')}>Accept</button></div></td>
                 </tr>
               ))}
             </tbody>
@@ -1682,47 +1898,77 @@ function NominationsPage() {
 function ImportsPage() {
   const [fileName, setFileName] = useState('')
   const [rows, setRows] = useState<Array<{ rowNumber: number; values: string[]; valid: boolean; errors: string[] }>>([])
+  const [preview, setPreview] = useState<{ total: number; valid: number; invalid: number; exact: number; probable: number; possible: number; new: number; warnings: string[] } | null>(null)
   const [status, setStatus] = useState('Awaiting file')
+  const [confirming, setConfirming] = useState(false)
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
     const text = await file.text()
-    const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
-    if (!lines.length) {
+    const rows = parseCsvRows(text)
+    if (!rows.length) {
       setFileName(file.name)
       setRows([])
+      setPreview(null)
       setStatus('No rows detected')
       return
     }
 
-    const header = lines[0].split(',').map((cell) => cell.trim())
-    const parsed = lines.slice(1).map((line, index) => {
-      const values = line.split(',').map((cell) => cell.trim())
-      const missing = header.filter((_, headerIndex) => !values[headerIndex])
-      const hasValidEmail = values[2] ? /@/.test(values[2]) : true
-      const errors = [] as string[]
+    const header = rows[0].header
+    const required = ['business_name', 'email']
+    const missingColumns = required.filter((column) => !header.includes(column))
 
-      if (missing.length) {
-        errors.push('Missing required values')
-      }
+    if (missingColumns.length) {
+      setFileName(file.name)
+      setRows([])
+      setPreview({
+        total: 0,
+        valid: 0,
+        invalid: 0,
+        exact: 0,
+        probable: 0,
+        possible: 0,
+        new: 0,
+        warnings: [`Missing required columns: ${missingColumns.join(', ')}`],
+      })
+      setStatus('Missing required columns')
+      return
+    }
 
-      if (!hasValidEmail) {
-        errors.push('Email is invalid')
-      }
-
+    const matches = rows.map(({ record, rowNumber, values }) => {
+      const validation = validateCsvRow(record, required)
       return {
-        rowNumber: index + 2,
+        rowNumber,
         values,
-        valid: !errors.length,
-        errors,
+        valid: validation.valid,
+        errors: validation.errors,
       }
     })
 
+    const summary = buildImportSummary(matches.map((row) => ({ valid: row.valid, errors: row.errors, warnings: [] })))
+
     setFileName(file.name)
-    setRows(parsed)
-    setStatus(parsed.some((row) => !row.valid) ? 'Validation issues found' : 'Ready to commit')
+    setRows(matches)
+    setPreview({
+      total: summary.total,
+      valid: summary.valid,
+      invalid: summary.invalid,
+      exact: summary.exact,
+      probable: summary.probable,
+      possible: summary.possible,
+      new: summary.new,
+      warnings: summary.warnings.length ? summary.warnings : ['CSV validation passed for all accepted rows.'],
+    })
+
+    const nextStatus = matches.some((row) => !row.valid) ? 'Validation issues found' : 'Ready to commit'
+    setStatus(nextStatus)
+
+    if (!matches.some((row) => !row.valid) && requiresConfirmation(matches)) {
+      const idempotencyKey = createIdempotencyKey(file.name, text)
+      setStatus(`Ready to commit · ${idempotencyKey.slice(0, 18)}...`)
+    }
   }
 
   const validRows = rows.filter((row) => row.valid).length
@@ -1746,8 +1992,15 @@ function ImportsPage() {
         <div className="stack-form">
           <label className="field">
             <span>Upload a CSV file</span>
-            <input type="file" accept=".csv,text/csv" onChange={(event) => void handleFileUpload(event)} />
+            <input type="file" accept=".csv,text/csv" onChange={(event) => void handleFileUpload(event)} aria-label="Upload a CSV file" />
           </label>
+          <a
+            className="ghost-button"
+            href={`data:text/csv;charset=utf-8,${encodeURIComponent(`${CSV_TEMPLATE_HEADERS.join(',')}\nNorthside Studio,hello@northside.com,+1 (415) 555-0105,https://northside.com,Seattle,WA,Leah Morris,public_submission` )}`}
+            download="d9-import-template.csv"
+          >
+            Download CSV template
+          </a>
         </div>
 
         {fileName ? (
@@ -1756,6 +2009,7 @@ function ImportsPage() {
               <strong>{fileName}</strong>
               <span>{validRows} valid rows · {invalidRows} invalid rows</span>
             </div>
+            <button type="button" className="primary-button" disabled={confirming || validRows === 0} onClick={() => setConfirming(true)}>{confirming ? 'Confirming...' : 'Confirm import'}</button>
           </div>
         ) : (
           <div className="panel empty-state">
@@ -1764,6 +2018,21 @@ function ImportsPage() {
           </div>
         )}
       </div>
+
+      {preview && (
+        <div className="panel">
+          <div className="panel-header"><h2>Import preview</h2></div>
+          <div className="summary-row">
+            <article className="metric-card tone-navy"><span className="metric-label">Total rows</span><strong>{preview.total}</strong><span className="metric-delta">Processed</span></article>
+            <article className="metric-card tone-orange"><span className="metric-label">Valid</span><strong>{preview.valid}</strong><span className="metric-delta">Ready</span></article>
+            <article className="metric-card tone-muted"><span className="metric-label">Invalid</span><strong>{preview.invalid}</strong><span className="metric-delta">Blocked</span></article>
+            <article className="metric-card tone-navy"><span className="metric-label">New records</span><strong>{preview.new}</strong><span className="metric-delta">Unmatched</span></article>
+          </div>
+          <ul className="activity-feed">
+            {preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="panel table-panel">
@@ -1918,7 +2187,7 @@ function CampaignPage() {
     if (!supabase || !name.trim()) return
 
     setSaving(true)
-    const { error } = await supabase.from('campaigns').insert({ name: name.trim(), status, campaign_type: 'discovery' })
+    const { error } = await supabase.from('campaigns').insert({ name: name.trim(), status, campaign_type: 'discovery', source_channel: 'manual' })
     setSaving(false)
 
     if (!error) {
@@ -1926,6 +2195,13 @@ function CampaignPage() {
       setStatus('draft')
       await loadCampaigns()
     }
+  }
+
+  const updateCampaignStatus = async (campaignId: string, nextStatus: string) => {
+    if (!supabase) return
+
+    await supabase.from('campaigns').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', campaignId)
+    await loadCampaigns()
   }
 
   return (
@@ -1949,9 +2225,11 @@ function CampaignPage() {
               <span>Status</span>
               <select value={status} onChange={(event) => setStatus(event.target.value)}>
                 <option value="draft">draft</option>
+                <option value="scheduled">scheduled</option>
                 <option value="active">active</option>
                 <option value="paused">paused</option>
                 <option value="completed">completed</option>
+                <option value="archived">archived</option>
               </select>
             </label>
           </div>
@@ -1967,7 +2245,7 @@ function CampaignPage() {
         <div className="panel table-panel">
           <table className="data-table">
             <thead>
-              <tr><th>Name</th><th>Type</th><th>Status</th></tr>
+              <tr><th>Name</th><th>Type</th><th>Status</th><th>Action</th></tr>
             </thead>
             <tbody>
               {campaigns.map((campaign) => (
@@ -1975,6 +2253,7 @@ function CampaignPage() {
                   <td>{campaign.name}</td>
                   <td>{campaign.campaign_type || 'discovery'}</td>
                   <td><span className="pill navy">{campaign.status}</span></td>
+                  <td><div className="header-inline-actions"><button type="button" className="ghost-button" onClick={() => void updateCampaignStatus(campaign.id, 'active')}>Activate</button><button type="button" className="ghost-button" onClick={() => void updateCampaignStatus(campaign.id, 'paused')}>Pause</button></div></td>
                 </tr>
               ))}
             </tbody>
