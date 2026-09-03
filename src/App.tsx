@@ -21,10 +21,12 @@ import {
 } from 'lucide-react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import './App.css'
+import { canTransitionCampaign, filterCampaigns, normalizeCampaign, summarizeCampaignMetrics } from './lib/campaign'
 import { classifyD9Status, getWorkflowRoutingLabel, normalizeText, normalizeWebsite } from './lib/discovery'
 import { CSV_TEMPLATE_HEADERS, buildImportSummary, createIdempotencyKey, parseCsvRows, requiresConfirmation, validateCsvRow } from './lib/imports'
 import { canProcessNomination, normalizeNomination, screenNominationForDuplicate, validateNominationDecision, validateNominationTransition } from './lib/nomination'
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
+import { buildWorkQueueSummary, filterWorkItems, normalizeWorkItem } from './lib/workqueue'
 
 type NavItem = {
   label: string
@@ -860,6 +862,9 @@ function DashboardPage() {
 function WorkQueuePage() {
   const [items, setItems] = useState<Array<{ id: string; title: string; owner: string; priority: string; status: string; due: string }>>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
 
   useEffect(() => {
     const loadQueue = async () => {
@@ -896,6 +901,37 @@ function WorkQueuePage() {
     void loadQueue()
   }, [])
 
+  const summary = buildWorkQueueSummary(
+    items.map((item) => normalizeWorkItem({
+      id: item.id,
+      title: item.title,
+      workType: 'new_discovery_review',
+      relatedRecordType: 'prospect',
+      relatedRecordId: item.id,
+      assignee: item.owner,
+      priority: item.priority,
+      status: item.status,
+      dueDate: item.due === 'No due date' ? null : new Date(item.due).toISOString(),
+      createdAt: new Date().toISOString(),
+    })),
+  )
+
+  const filteredItems = filterWorkItems(
+    items.map((item) => normalizeWorkItem({
+      id: item.id,
+      title: item.title,
+      workType: 'new_discovery_review',
+      relatedRecordType: 'prospect',
+      relatedRecordId: item.id,
+      assignee: item.owner,
+      priority: item.priority,
+      status: item.status,
+      dueDate: item.due === 'No due date' ? null : new Date(item.due).toISOString(),
+      createdAt: new Date().toISOString(),
+    })),
+    { search, status: statusFilter, priority: priorityFilter },
+  )
+
   return (
     <div className="page">
       <div className="page-header">
@@ -905,20 +941,47 @@ function WorkQueuePage() {
         </div>
         <button type="button" className="primary-button">Assign tasks</button>
       </div>
+
+      <section className="summary-row">
+        <article className="metric-card tone-navy"><span className="metric-label">Open</span><strong>{summary.open}</strong><span className="metric-delta">Active work</span></article>
+        <article className="metric-card tone-orange"><span className="metric-label">Urgent</span><strong>{summary.urgent}</strong><span className="metric-delta">Priority queue</span></article>
+        <article className="metric-card tone-muted"><span className="metric-label">Overdue</span><strong>{summary.overdue}</strong><span className="metric-delta">Needs attention</span></article>
+        <article className="metric-card tone-navy"><span className="metric-label">Unassigned</span><strong>{summary.unassigned}</strong><span className="metric-delta">Open claims</span></article>
+      </section>
+
       <div className="panel">
         <div className="panel-header">
           <h2>Priority queue</h2>
-          <span className="pill navy">{items.length || 0} active</span>
+          <span className="pill navy">{filteredItems.length || 0} visible</span>
         </div>
+        <div className="header-inline-actions">
+          <input aria-label="Search work queue" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search work queue" />
+          <select aria-label="Filter queue status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="all">All statuses</option>
+            <option value="unassigned">Unassigned</option>
+            <option value="assigned">Assigned</option>
+            <option value="in_progress">In progress</option>
+            <option value="waiting">Waiting</option>
+            <option value="completed">Completed</option>
+          </select>
+          <select aria-label="Filter queue priority" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+            <option value="all">All priorities</option>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+
         {loading ? (
           <p>Loading queue…</p>
-        ) : items.length ? (
+        ) : filteredItems.length ? (
           <div className="stack-list">
-            {items.map((item) => (
+            {filteredItems.map((item) => (
               <div key={item.id} className="list-row">
                 <div>
                   <strong>{item.title}</strong>
-                  <span>{item.owner} · {item.due}</span>
+                  <span>{item.assignee} · {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'No due date'}</span>
                 </div>
                 <div className="header-inline-actions">
                   <span className="pill neutral">{item.priority}</span>
@@ -2156,11 +2219,13 @@ function DuplicateReviewPage() {
 }
 
 function CampaignPage() {
-  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; status: string; campaign_type?: string; source_channel?: string }>>([])
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; status: string; campaign_type?: string; source_channel?: string; owner?: string; description?: string }>>([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
   const [status, setStatus] = useState('draft')
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   const loadCampaigns = async () => {
     if (!supabase) {
@@ -2176,18 +2241,35 @@ function CampaignPage() {
       return
     }
 
-    setCampaigns((data ?? []) as Array<{ id: string; name: string; status: string; campaign_type?: string; source_channel?: string }>)
+    setCampaigns((data ?? []) as Array<{ id: string; name: string; status: string; campaign_type?: string; source_channel?: string; owner?: string; description?: string }>)
     setLoading(false)
   }
 
   useEffect(() => { void loadCampaigns() }, [])
 
+  const filteredCampaigns = filterCampaigns(
+    (campaigns ?? []).map((campaign) => normalizeCampaign({
+      id: campaign.id,
+      name: campaign.name,
+      description: campaign.description ?? '',
+      campaignType: campaign.campaign_type ?? 'discovery',
+      sourceChannel: campaign.source_channel ?? 'manual',
+      owner: campaign.owner ?? 'Unassigned',
+      status: campaign.status,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })),
+    { status: statusFilter, search },
+  )
+
   const handleCreateCampaign = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!supabase || !name.trim()) return
 
+    const normalized = normalizeCampaign({ name, status, campaignType: 'discovery', sourceChannel: 'manual', owner: 'Current operator', description: 'Campaign created from the discovery workflow.' })
+
     setSaving(true)
-    const { error } = await supabase.from('campaigns').insert({ name: name.trim(), status, campaign_type: 'discovery', source_channel: 'manual' })
+    const { error } = await supabase.from('campaigns').insert({ name: normalized.name, status: normalized.status, campaign_type: normalized.campaignType, source_channel: normalized.sourceChannel, owner: normalized.owner, description: normalized.description })
     setSaving(false)
 
     if (!error) {
@@ -2200,9 +2282,16 @@ function CampaignPage() {
   const updateCampaignStatus = async (campaignId: string, nextStatus: string) => {
     if (!supabase) return
 
+    const current = (campaigns.find((campaign) => campaign.id === campaignId)?.status ?? 'draft')
+    if (!canTransitionCampaign(current, nextStatus)) {
+      return
+    }
+
     await supabase.from('campaigns').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', campaignId)
     await loadCampaigns()
   }
+
+  const metrics = summarizeCampaignMetrics(filteredCampaigns)
 
   return (
     <div className="page">
@@ -2212,6 +2301,13 @@ function CampaignPage() {
           <h1>Campaigns</h1>
         </div>
       </div>
+
+      <section className="summary-row">
+        <article className="metric-card tone-navy"><span className="metric-label">Total</span><strong>{metrics.total}</strong><span className="metric-delta">Campaigns</span></article>
+        <article className="metric-card tone-orange"><span className="metric-label">Active</span><strong>{metrics.active}</strong><span className="metric-delta">Running now</span></article>
+        <article className="metric-card tone-muted"><span className="metric-label">Draft</span><strong>{metrics.draft}</strong><span className="metric-delta">In planning</span></article>
+        <article className="metric-card tone-navy"><span className="metric-label">Completed</span><strong>{metrics.completed}</strong><span className="metric-delta">Closed</span></article>
+      </section>
 
       <div className="panel">
         <div className="panel-header"><h2>Create campaign</h2></div>
@@ -2239,32 +2335,51 @@ function CampaignPage() {
         </form>
       </div>
 
-      {loading ? (
-        <div className="panel empty-state"><h2>Loading campaigns</h2><p>Restoring the active campaign portfolio.</p></div>
-      ) : campaigns.length ? (
-        <div className="panel table-panel">
-          <table className="data-table">
-            <thead>
-              <tr><th>Name</th><th>Type</th><th>Status</th><th>Action</th></tr>
-            </thead>
-            <tbody>
-              {campaigns.map((campaign) => (
-                <tr key={campaign.id}>
-                  <td>{campaign.name}</td>
-                  <td>{campaign.campaign_type || 'discovery'}</td>
-                  <td><span className="pill navy">{campaign.status}</span></td>
-                  <td><div className="header-inline-actions"><button type="button" className="ghost-button" onClick={() => void updateCampaignStatus(campaign.id, 'active')}>Activate</button><button type="button" className="ghost-button" onClick={() => void updateCampaignStatus(campaign.id, 'paused')}>Pause</button></div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Campaign portfolio</h2>
+          <div className="header-inline-actions">
+            <input aria-label="Search campaigns" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns" />
+            <select aria-label="Filter campaign status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="draft">draft</option>
+              <option value="scheduled">scheduled</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+              <option value="completed">completed</option>
+              <option value="archived">archived</option>
+            </select>
+          </div>
         </div>
-      ) : (
-        <div className="panel empty-state">
-          <h2>No campaign records</h2>
-          <p>Campaign records will appear here once discovery outreach is launched.</p>
-        </div>
-      )}
+
+        {loading ? (
+          <div className="panel empty-state"><h2>Loading campaigns</h2><p>Restoring the active campaign portfolio.</p></div>
+        ) : filteredCampaigns.length ? (
+          <div className="panel table-panel">
+            <table className="data-table">
+              <thead>
+                <tr><th>Name</th><th>Type</th><th>Status</th><th>Owner</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {filteredCampaigns.map((campaign) => (
+                  <tr key={campaign.id}>
+                    <td>{campaign.name}</td>
+                    <td>{campaign.campaignType}</td>
+                    <td><span className="pill navy">{campaign.status}</span></td>
+                    <td>{campaign.owner}</td>
+                    <td><div className="header-inline-actions"><button type="button" className="ghost-button" onClick={() => void updateCampaignStatus(campaign.id, 'active')}>Activate</button><button type="button" className="ghost-button" onClick={() => void updateCampaignStatus(campaign.id, 'paused')}>Pause</button></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No campaign records</h2>
+            <p>Campaign records will appear here once discovery outreach is launched.</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

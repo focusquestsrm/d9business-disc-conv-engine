@@ -340,4 +340,82 @@ describe('App', () => {
       expect(screen.getByText(/Validation issues found/i)).toBeInTheDocument()
     })
   })
+
+  it('supports nomination submission and review actions', async () => {
+    mockSupabase.auth.getSession.mockResolvedValue({
+      data: {
+        session: {
+          user: {
+            id: 'user-123',
+            email: 'reviewer@example.com',
+            user_metadata: { full_name: 'Jordan Park' },
+          },
+        },
+      },
+      error: null,
+    })
+
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'user_role_assignments') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(async () => ({ data: [{ role_id: 'role-456' }], error: null })),
+            })),
+          })),
+        }
+      }
+
+      if (table === 'roles') {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(async () => ({ data: [{ code: 'reviewer', display_name: 'Reviewer' }], error: null })),
+          })),
+        }
+      }
+
+      if (table === 'nominations') {
+        return {
+          select: vi.fn(() => ({
+            order: vi.fn(async () => ({ data: [{ id: 'n-1', nominated_business_name: 'Sierra Studio', source: 'public_submission', reason: 'Strong D9 fit', review_status: 'submitted' }], error: null })),
+          })),
+          insert: vi.fn(() => ({
+            select: vi.fn(async () => ({ data: [{ id: 'n-2' }], error: null })),
+          })),
+          update: vi.fn(() => ({
+            eq: vi.fn(async () => ({ data: [{ id: 'n-1' }], error: null })),
+          })),
+        }
+      }
+
+      if (table === 'workflow_events') {
+        return {
+          insert: vi.fn(async () => ({ data: [{ id: 'we-1' }], error: null })),
+        }
+      }
+
+      return { select: vi.fn() }
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/nominations']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /nominations/i })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText(/business name/i), { target: { value: 'Northside Studio' } })
+    fireEvent.change(screen.getByLabelText(/source/i), { target: { value: 'public_submission' } })
+    fireEvent.change(screen.getByLabelText(/nomination reason/i), { target: { value: 'Strong community referral' } })
+    fireEvent.click(screen.getByRole('button', { name: /submit nomination/i }))
+
+    await waitFor(() => {
+      expect(mockSupabase.from).toHaveBeenCalledWith('nominations')
+    })
+
+    expect(screen.getByRole('button', { name: /review nomination/i })).toBeInTheDocument()
+  })
 })
