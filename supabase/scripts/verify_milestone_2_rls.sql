@@ -207,22 +207,32 @@ WITH required_results AS (
          CASE WHEN (SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'prospects') > 0 THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN (SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'prospects') > 0 THEN 'At least one policy exists for public.prospects.' ELSE 'No RLS policy exists for public.prospects.' END
   UNION ALL
-  SELECT 'POLICY', 'public.workflow_assignments', 'policy_roles_match', 'authenticated_or_platform_admin',
+  SELECT 'POLICY', 'public.workflow_assignments', 'policy_roles_match', 'authenticated_with_platform_admin_expression',
          COALESCE(array_to_string((SELECT ARRAY(SELECT DISTINCT unnest(roles) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workflow_assignments')), ', '), 'NONE'),
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_policies
            WHERE schemaname = 'public'
              AND tablename = 'workflow_assignments'
-             AND (array_to_string(roles, ',') ILIKE '%authenticated%' OR array_to_string(roles, ',') ILIKE '%platform_admin%')
+             AND array_to_string(roles, ',') ILIKE '%authenticated%'
+             AND (
+               qual ILIKE '%current_user_is_platform_admin()%' OR
+               qual ILIKE '%current_user_is_platform_admin %%' OR
+               qual ILIKE '%current_user_is_platform_admin%' 
+             )
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_policies
            WHERE schemaname = 'public'
              AND tablename = 'workflow_assignments'
-             AND (array_to_string(roles, ',') ILIKE '%authenticated%' OR array_to_string(roles, ',') ILIKE '%platform_admin%')
-         ) THEN 'Policy roles include authenticated or platform_admin for public.workflow_assignments.' ELSE 'Policy roles do not include authenticated or platform_admin for public.workflow_assignments.' END
+             AND array_to_string(roles, ',') ILIKE '%authenticated%'
+             AND (
+               qual ILIKE '%current_user_is_platform_admin()%' OR
+               qual ILIKE '%current_user_is_platform_admin %%' OR
+               qual ILIKE '%current_user_is_platform_admin%'
+             )
+         ) THEN 'Policy targets authenticated and uses the application platform-admin helper for public.workflow_assignments.' ELSE 'Workflow assignment policy does not target authenticated and prove application-level platform-admin authorization.' END
   UNION ALL
   SELECT 'PRIMARY_KEY', 'public.discovery_sources', 'primary_key_exists', 'pkey_present',
          CASE WHEN EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class cl ON cl.oid = c.conrelid WHERE cl.relname = 'discovery_sources' AND c.contype = 'p') THEN 'PRESENT' ELSE 'MISSING' END,
@@ -368,8 +378,12 @@ overall AS (
          CASE WHEN COUNT(*) FILTER (WHERE status = 'FAIL') = 0 THEN 'PASS' ELSE 'FAIL' END AS status,
          CASE WHEN COUNT(*) FILTER (WHERE status = 'FAIL') = 0 THEN 'Milestone 2 verification PASSED' ELSE 'Milestone 2 verification FAILED' END AS details
   FROM required_results
+),
+final_result AS (
+  SELECT * FROM required_results
+  UNION ALL
+  SELECT * FROM overall
 )
-SELECT * FROM required_results
-UNION ALL
-SELECT * FROM overall
+SELECT category, object_name, check_name, expected_result, actual_result, status, details
+FROM final_result
 ORDER BY CASE WHEN category = 'OVERALL' THEN 1 ELSE 0 END, object_name, check_name;

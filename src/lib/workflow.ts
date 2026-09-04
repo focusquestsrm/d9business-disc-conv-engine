@@ -123,3 +123,55 @@ export const classifyDuplicateMatch = (
   if (fieldsMatched.length >= 1 && fieldsConflicting.length <= 2) return 'possible'
   return 'no_match'
 }
+
+export function tenantAllowedRead(context: {
+  isAuthenticated?: boolean
+  roleCode?: string | null
+  userId?: string | null
+  organizationId?: string | null
+} = {}): boolean {
+  if (!context.isAuthenticated) {
+    return false
+  }
+
+  const roleCode = context.roleCode?.trim().toLowerCase()
+  return roleCode === 'platform_admin'
+}
+
+export function buildD9MatchCandidate(
+  entityType: string,
+  entityId: string,
+  targetText: string,
+): {
+  entity_type: string
+  entity_id: string
+  normalized_text: string
+  match_reason: string
+  confidence_level: 'exact' | 'probable' | 'possible' | 'no_match'
+  fields_matched: string[]
+  fields_conflicting: string[]
+  recommended_action: 'manual_review' | 'new_record' | 'use_existing'
+} {
+  const normalizedText = String(targetText ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const sanitizedText = normalizedText.replace(/\d+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return {
+    entity_type: entityType,
+    entity_id: entityId,
+    normalized_text: sanitizedText,
+    match_reason: 'normalized_text_match',
+    confidence_level: sanitizedText.length > 0 ? 'possible' : 'no_match',
+    fields_matched: sanitizedText ? ['display_name'] : [],
+    fields_conflicting: [],
+    recommended_action: 'manual_review',
+  }
+}
