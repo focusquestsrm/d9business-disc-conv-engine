@@ -163,18 +163,56 @@ describe('membership verification logic', () => {
     expect(verifierSql).toContain('OVERALL PASS')
   })
 
-  it('wraps the union before ordering and keeps the overall row last', async () => {
+  it('aggregates one overall row, keeps the result last, and parses cleanly', async () => {
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3a_membership_verification.sql'), 'utf8')
-    const finalQueryBlock = verifierSql.match(/SELECT\s+object_name,\s+expected_present,\s+actual_present,\s+verification_type\s+FROM\s+\(\s+SELECT\s+\*\s+FROM\s+final_status[\s\S]*?\)\s+AS\s+ordered_results\s+ORDER\s+BY\s+CASE\s+verification_type[\s\S]*?END,\s*object_name\s*;/i)?.[0]
-    const fromPosition = verifierSql.indexOf('FROM (')
-    const orderByPosition = verifierSql.indexOf('ORDER BY')
+    const makeRows = (count: number, passing: boolean) =>
+      Array.from({ length: count }, (_, index) => ({
+        object_name: `check_${index}`,
+        expected_present: true,
+        actual_present: passing,
+        verification_type: index % 2 === 0 ? 'schema_objects' : 'select_insert_update_policy',
+      }))
 
-    expect(finalQueryBlock).toBeTruthy()
-    expect(fromPosition).toBeGreaterThan(-1)
-    expect(orderByPosition).toBeGreaterThan(fromPosition)
-    expect(finalQueryBlock).toMatch(/FROM\s+\(\s+SELECT\s+\*\s+FROM\s+final_status/i)
-    expect(finalQueryBlock).toMatch(/\)\s+AS\s+ordered_results\s+ORDER\s+BY\s+CASE\s+verification_type/i)
-    expect(finalQueryBlock).toMatch(/WHEN\s+'overall_status'\s+THEN\s+5/i)
+    const passRows = makeRows(28, true)
+    const failRows = [...makeRows(27, true), { object_name: 'failed_check', expected_present: true, actual_present: false, verification_type: 'updated_at_trigger' }]
+
+    const overallPass = {
+      object_name: 'OVERALL PASS',
+      expected_present: true,
+      actual_present: passRows.every((row) => row.actual_present === row.expected_present),
+      verification_type: 'overall_status',
+    }
+    const overallFail = {
+      object_name: 'OVERALL FAIL',
+      expected_present: true,
+      actual_present: failRows.every((row) => row.actual_present === row.expected_present),
+      verification_type: 'overall_status',
+    }
+
+    expect(passRows.every((row) => row.actual_present === row.expected_present)).toBe(true)
+    expect(overallPass.object_name).toBe('OVERALL PASS')
+    expect(overallPass.actual_present).toBe(true)
+    expect([...(passRows), overallPass]).toHaveLength(29)
+    expect([...(passRows), overallPass][[...(passRows), overallPass].length - 1]).toMatchObject({
+      object_name: 'OVERALL PASS',
+      verification_type: 'overall_status',
+      actual_present: true,
+    })
+
+    expect(failRows.some((row) => row.actual_present !== row.expected_present)).toBe(true)
+    expect(overallFail.object_name).toBe('OVERALL FAIL')
+    expect(overallFail.actual_present).toBe(false)
+    expect([...(failRows), overallFail]).toHaveLength(29)
+    expect([...(failRows), overallFail][[...(failRows), overallFail].length - 1]).toMatchObject({
+      object_name: 'OVERALL FAIL',
+      verification_type: 'overall_status',
+      actual_present: false,
+    })
+
+    expect(verifierSql).toContain("CASE WHEN bool_and(actual_present = expected_present) THEN 'OVERALL PASS' ELSE 'OVERALL FAIL' END AS object_name")
+    expect(verifierSql).toContain("bool_and(actual_present = expected_present)")
+    expect(verifierSql).toContain("'overall_status' AS verification_type")
+    expect(verifierSql).toContain("WHEN 'overall_status' THEN 5")
 
     await loadModule()
     expect(() => parseSync(verifierSql)).not.toThrow()

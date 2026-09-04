@@ -164,6 +164,14 @@ summary AS (
          COUNT(*) FILTER (WHERE NOT actual_present) AS failed_checks
   FROM final_status
   GROUP BY verification_type
+),
+overall_result AS (
+  SELECT
+    CASE WHEN bool_and(actual_present = expected_present) THEN 'OVERALL PASS' ELSE 'OVERALL FAIL' END AS object_name,
+    TRUE AS expected_present,
+    bool_and(actual_present = expected_present) AS actual_present,
+    'overall_status' AS verification_type
+  FROM final_status
 )
 SELECT
   object_name,
@@ -171,15 +179,13 @@ SELECT
   actual_present,
   verification_type
 FROM (
-  SELECT * FROM final_status
+  SELECT object_name, expected_present, actual_present, verification_type
+  FROM final_status
 
   UNION ALL
 
-  SELECT 'OVERALL PASS' AS object_name,
-         TRUE AS expected_present,
-         CASE WHEN EXISTS (SELECT 1 FROM final_status WHERE actual_present = FALSE) THEN FALSE ELSE TRUE END AS actual_present,
-         'overall_status' AS verification_type
-  FROM final_status
+  SELECT object_name, expected_present, actual_present, verification_type
+  FROM overall_result
 ) AS ordered_results
 ORDER BY
   CASE verification_type
