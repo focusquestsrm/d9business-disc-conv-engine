@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { loadModule, parseSync } from 'pgsql-parser'
 import { describe, expect, it } from 'vitest'
 import {
   buildVerificationExportColumns,
@@ -160,5 +161,23 @@ describe('membership verification logic', () => {
     expect(verifierSql).toContain('transition_verification_case_status')
     expect(verifierSql).toContain('record_verification_response_received')
     expect(verifierSql).toContain('OVERALL PASS')
+  })
+
+  it('wraps the union before ordering and keeps the overall row last', async () => {
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3a_membership_verification.sql'), 'utf8')
+    const finalQueryBlock = verifierSql.match(/SELECT\s+object_name,\s+expected_present,\s+actual_present,\s+verification_type\s+FROM\s+\(\s+SELECT\s+\*\s+FROM\s+final_status[\s\S]*?\)\s+AS\s+ordered_results\s+ORDER\s+BY\s+CASE\s+verification_type[\s\S]*?END,\s*object_name\s*;/i)?.[0]
+    const fromPosition = verifierSql.indexOf('FROM (')
+    const orderByPosition = verifierSql.indexOf('ORDER BY')
+
+    expect(finalQueryBlock).toBeTruthy()
+    expect(fromPosition).toBeGreaterThan(-1)
+    expect(orderByPosition).toBeGreaterThan(fromPosition)
+    expect(finalQueryBlock).toMatch(/FROM\s+\(\s+SELECT\s+\*\s+FROM\s+final_status/i)
+    expect(finalQueryBlock).toMatch(/\)\s+AS\s+ordered_results\s+ORDER\s+BY\s+CASE\s+verification_type/i)
+    expect(finalQueryBlock).toMatch(/WHEN\s+'overall_status'\s+THEN\s+5/i)
+
+    await loadModule()
+    expect(() => parseSync(verifierSql)).not.toThrow()
+    console.log('VERIFIER_PARSE_OK')
   })
 })

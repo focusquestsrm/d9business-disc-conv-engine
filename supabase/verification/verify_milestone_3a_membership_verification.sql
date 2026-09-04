@@ -165,18 +165,29 @@ summary AS (
   FROM final_status
   GROUP BY verification_type
 )
-SELECT * FROM final_status
-UNION ALL
-SELECT 'OVERALL PASS' AS object_name,
-       TRUE AS expected_present,
-       CASE WHEN EXISTS (SELECT 1 FROM final_status WHERE actual_present = FALSE) THEN FALSE ELSE TRUE END AS actual_present,
-       'overall_status' AS verification_type
-FROM final_status
-ORDER BY CASE verification_type
-  WHEN 'schema_objects' THEN 1
-  WHEN 'select_insert_update_policy' THEN 2
-  WHEN 'select_insert_policy' THEN 3
-  WHEN 'updated_at_trigger' THEN 4
-  WHEN 'overall_status' THEN 5
-  ELSE 6
-END, object_name;
+SELECT
+  object_name,
+  expected_present,
+  actual_present,
+  verification_type
+FROM (
+  SELECT * FROM final_status
+
+  UNION ALL
+
+  SELECT 'OVERALL PASS' AS object_name,
+         TRUE AS expected_present,
+         CASE WHEN EXISTS (SELECT 1 FROM final_status WHERE actual_present = FALSE) THEN FALSE ELSE TRUE END AS actual_present,
+         'overall_status' AS verification_type
+  FROM final_status
+) AS ordered_results
+ORDER BY
+  CASE verification_type
+    WHEN 'schema_objects' THEN 1
+    WHEN 'select_insert_update_policy' THEN 2
+    WHEN 'select_insert_policy' THEN 3
+    WHEN 'updated_at_trigger' THEN 4
+    WHEN 'overall_status' THEN 5
+    ELSE 6
+  END,
+  object_name;
