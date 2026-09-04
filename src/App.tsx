@@ -1303,19 +1303,56 @@ function VerificationQueuePage() {
     if (!supabase || !importRows.length) return
 
     try {
-      const workbookRows = importRows.map((row) => ({
-        case_id: row.verificationCaseId,
-        claimant_name: `${row.legalFirstName} ${row.legalLastName}`.trim() || 'Unknown claimant',
-        claimed_organization: row.claimedOrganization,
-        status: 'response_received',
-        result: row.organizationResult,
-        verification_reason: row.organizationReason || null,
-        confidence_score: 100,
-        batch_id: row.batchId,
+      const importId = `imp-${Date.now()}`
+      const batchId = importRows[0]?.batchId || 'BATCH-N/A'
+      const organization = importRows[0]?.claimedOrganization || 'Unknown organization'
+
+      const { error: importError } = await supabase.from('verification_imports').insert({
+        id: importId,
+        batch_id: batchId,
+        organization,
+        source_file_name: 'manual-import.xlsx',
+        imported_by: null,
+        imported_at: new Date().toISOString(),
+        total_rows: importRows.length,
+        valid_rows: importRows.length,
+        invalid_rows: 0,
+        already_processed_rows: 0,
+        status: 'committed',
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+      })
+
+      if (importError) throw importError
+
+      const importRowsPayload = importRows.map((row, index) => ({
+        verification_import_id: importId,
+        row_number: index + 1,
+        case_id: row.verificationCaseId,
+        source_record_id: row.recordId,
+        batch_id: row.batchId,
+        organization: row.claimedOrganization,
+        result: row.organizationResult,
+        reason: row.organizationReason || null,
+        notes: null,
+        raw_payload: row,
       }))
 
-      await supabase.from('verification_cases').upsert(workbookRows, { onConflict: 'case_id' })
+      const { error: rowError } = await supabase.from('verification_import_rows').upsert(importRowsPayload, {
+        onConflict: 'verification_import_id,row_number',
+      })
+
+      if (rowError) throw rowError
+
+      const { error: rpcError } = await supabase.rpc('commit_verification_import', {
+        p_import_id: importId,
+        p_batch_id: batchId,
+        p_organization: organization,
+        p_rows: importRows,
+      })
+
+      if (rpcError) throw rpcError
+
       setImportRows([])
       setImportPreview(null)
       setImportError(null)

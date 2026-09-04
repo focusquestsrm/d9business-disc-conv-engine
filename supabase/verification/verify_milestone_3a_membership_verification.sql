@@ -14,6 +14,8 @@ WITH expected_objects AS (
   UNION ALL
   SELECT 'public.verification_import_rows', true
   UNION ALL
+  SELECT 'public.commit_verification_import', true
+  UNION ALL
   SELECT 'public.set_verification_updated_at', true
 ),
 actual_objects AS (
@@ -21,6 +23,11 @@ actual_objects AS (
   FROM information_schema.tables
   WHERE table_schema = 'public'
     AND table_name IN ('verification_batches', 'verification_cases', 'verification_results', 'verification_batch_items', 'verification_imports', 'verification_import_rows')
+  UNION ALL
+  SELECT 'public.commit_verification_import'
+  FROM information_schema.routines
+  WHERE routine_schema = 'public'
+    AND routine_name = 'commit_verification_import'
   UNION ALL
   SELECT 'public.set_verification_updated_at'
   FROM information_schema.routines

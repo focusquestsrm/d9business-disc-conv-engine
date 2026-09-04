@@ -125,6 +125,18 @@ export const verificationRepository = {
     return prepared.length
   },
 
+  async commitImport(importId: string, batchId: string, organization: string, rows: Array<Record<string, any>>) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('commit_verification_import', {
+      p_import_id: importId,
+      p_batch_id: batchId,
+      p_organization: organization,
+      p_rows: rows,
+    })
+    if (error) throw error
+    return data
+  },
+
   async loadMetrics() {
     if (!client) throw new Error('Supabase is not configured.')
     const { data, error } = await client.from('verification_cases').select('status')

@@ -162,6 +162,64 @@ BEFORE UPDATE ON public.verification_import_rows
 FOR EACH ROW
 EXECUTE FUNCTION public.set_verification_updated_at();
 
+CREATE OR REPLACE FUNCTION public.commit_verification_import(
+  p_import_id uuid,
+  p_batch_id uuid,
+  p_organization text,
+  p_rows jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  row_payload jsonb;
+  row_count integer := 0;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required to commit verification imports.';
+  END IF;
+
+  IF NOT (public.current_user_is_platform_admin() OR public.user_has_permission('view_verification_modules')) THEN
+    RAISE EXCEPTION 'Permission denied: verification import commit requires authorized staff access.';
+  END IF;
+
+  IF p_rows IS NULL THEN
+    p_rows := '[]'::jsonb;
+  END IF;
+
+  FOR row_payload IN SELECT * FROM jsonb_array_elements(p_rows)
+  LOOP
+    UPDATE public.verification_cases
+    SET status = 'response_received',
+        result = COALESCE(NULLIF(upper(row_payload->>'organizationResult'), ''), result),
+        verification_reason = NULLIF(row_payload->>'organizationReason', ''),
+        claimed_organization = COALESCE(NULLIF(trim(row_payload->>'claimedOrganization'), ''), claimed_organization),
+        batch_id = COALESCE(p_batch_id, batch_id),
+        updated_at = now()
+    WHERE case_id = row_payload->>'verificationCaseId';
+
+    row_count := row_count + 1;
+  END LOOP;
+
+  UPDATE public.verification_imports
+  SET status = 'committed',
+      organization = COALESCE(NULLIF(trim(p_organization), ''), organization),
+      updated_at = now(),
+      valid_rows = row_count,
+      total_rows = row_count
+  WHERE id = p_import_id;
+
+  RETURN jsonb_build_object(
+    'import_id', p_import_id,
+    'batch_id', p_batch_id,
+    'organization', p_organization,
+    'committed_rows', row_count
+  );
+END;
+$$;
+
 ALTER TABLE public.verification_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.verification_cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.verification_results ENABLE ROW LEVEL SECURITY;
