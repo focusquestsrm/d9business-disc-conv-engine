@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -25,6 +25,7 @@ import { canTransitionCampaign, filterCampaigns, normalizeCampaign, summarizeCam
 import { classifyD9Status, getWorkflowRoutingLabel, normalizeText, normalizeWebsite } from './lib/discovery'
 import { CSV_TEMPLATE_HEADERS, buildImportSummary, createIdempotencyKey, parseCsvRows, requiresConfirmation, validateCsvRow } from './lib/imports'
 import { canProcessNomination, normalizeNomination, screenNominationForDuplicate, validateNominationDecision, validateNominationTransition } from './lib/nomination'
+import { deriveWorkflowStatus, normalizeQuickCapturePayload, validateQuickCaptureForm } from './lib/quickCapture'
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
 import { buildWorkQueueSummary, filterWorkItems, normalizeWorkItem } from './lib/workqueue'
 
@@ -49,6 +50,8 @@ type SessionUser = {
   roleDisplayName: string
 }
 
+const quickCaptureRedirectPath = '/quick-capture'
+
 const navGroups: NavGroup[] = [
   {
     label: 'Overview',
@@ -56,7 +59,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Discovery',
-    items: [{ label: 'Prospects', icon: Users, to: '/prospects' }, { label: 'Businesses', icon: Building2, to: '/businesses' }, { label: 'Campaigns', icon: Megaphone, to: '/campaigns' }, { label: 'Nominations', icon: ArrowRight, to: '/nominations' }, { label: 'Imports', icon: FileText, to: '/imports' }],
+    items: [{ label: 'Quick Capture', icon: MessageSquareText, to: '/quick-capture' }, { label: 'Prospects', icon: Users, to: '/prospects' }, { label: 'Businesses', icon: Building2, to: '/businesses' }, { label: 'Campaigns', icon: Megaphone, to: '/campaigns' }, { label: 'Nominations', icon: ArrowRight, to: '/nominations' }, { label: 'Imports', icon: FileText, to: '/imports' }],
   },
   {
     label: 'Verification',
@@ -86,46 +89,27 @@ function AppRoot() {
   const [signingIn, setSigningIn] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
+    const defaults = {
+      Overview: true,
+      Discovery: false,
+      Verification: false,
+      'Social Engagement': false,
+      Integrations: false,
+      Administration: false,
+    }
+
     if (typeof window === 'undefined') {
-      return {
-        Overview: true,
-        Discovery: true,
-        Verification: true,
-        'Social Engagement': false,
-        Integrations: false,
-        Administration: false,
-      }
+      return defaults
     }
 
     try {
       const stored = window.localStorage.getItem('d9network-nav-expanded')
       if (!stored) {
-        return {
-          Overview: true,
-          Discovery: true,
-          Verification: true,
-          'Social Engagement': false,
-          Integrations: false,
-          Administration: false,
-        }
+        return defaults
       }
-      return { ...{
-        Overview: true,
-        Discovery: true,
-        Verification: true,
-        'Social Engagement': false,
-        Integrations: false,
-        Administration: false,
-      }, ...JSON.parse(stored) }
+      return { ...defaults, ...JSON.parse(stored) }
     } catch {
-      return {
-        Overview: true,
-        Discovery: true,
-        Verification: true,
-        'Social Engagement': false,
-        Integrations: false,
-        Administration: false,
-      }
+      return defaults
     }
   })
 
@@ -298,10 +282,16 @@ function AppRoot() {
     setLoginError(null)
   }
 
-  const normalizedRoutes = navGroups.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => !item.requiresAdmin || isPlatformAdmin),
-  }))
+  const normalizedRoutes = useMemo(
+    () => navGroups.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.requiresAdmin || isPlatformAdmin),
+    })),
+    [isPlatformAdmin],
+  )
+
+  const location = useLocation()
+  const loginRedirectTarget = (location.state as { from?: string } | null)?.from || quickCaptureRedirectPath
 
   return (
     <Routes>
@@ -310,7 +300,7 @@ function AppRoot() {
         path="/login"
         element={
           isAuthenticated ? (
-            <Navigate to="/dashboard" replace />
+            <Navigate to={loginRedirectTarget} replace />
           ) : (
             <LoginPage
               isConfigured={isSupabaseConfigured}
@@ -368,6 +358,20 @@ function AppRoot() {
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <VerificationQueuePage />
             </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/quick-capture"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <QuickCaptureStandaloneLayout
+              currentUserId={session?.user?.id ?? null}
+              userDisplayName={userDisplayName}
+              userRoleDisplay={userRoleDisplay}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
+            />
           </ProtectedRoute>
         }
       />
@@ -482,12 +486,14 @@ function ProtectedRoute({
   requireAdmin: boolean
   children: React.ReactNode
 }) {
+  const location = useLocation()
+
   if (authLoading) {
     return <LoadingPage />
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
   if (requireAdmin && !isPlatformAdmin) {
@@ -630,20 +636,45 @@ function AuthenticatedAppShell({
 }) {
   const location = useLocation()
 
+  const lastPathnameRef = useRef<string>(location.pathname)
+
   useEffect(() => {
+    if (lastPathnameRef.current === location.pathname) {
+      return
+    }
+
+    lastPathnameRef.current = location.pathname
+
     const activeGroup = navGroups.find((group) => group.items.some((item) => item.to === location.pathname))
     if (!activeGroup || !activeGroup.label) {
       return
     }
 
     setExpandedSections((current: Record<string, boolean>) => {
-      if (current[activeGroup.label] === true) {
+      const nextState: Record<string, boolean> = {}
+      for (const group of navGroups) {
+        nextState[group.label] = group.label === activeGroup.label
+      }
+
+      const hasChanged = Object.keys(nextState).some((key) => current[key] !== nextState[key])
+      if (!hasChanged) {
         return current
       }
 
-      return { ...current, [activeGroup.label]: true }
+      return { ...current, ...nextState }
     })
-  }, [location.pathname, navGroups, setExpandedSections])
+  }, [location.pathname, navGroups])
+
+  const toggleSection = (groupLabel: string) => {
+    setExpandedSections((current) => {
+      const isCurrentlyExpanded = Boolean(current[groupLabel])
+      const nextState: Record<string, boolean> = {}
+      for (const group of navGroups) {
+        nextState[group.label] = group.label === groupLabel ? !isCurrentlyExpanded : false
+      }
+      return { ...current, ...nextState }
+    })
+  }
 
   return (
     <div className="app-shell">
@@ -667,20 +698,28 @@ function AuthenticatedAppShell({
 
         <nav className="nav-groups" aria-label="Navigation groups">
           {navGroups.map((group) => {
-            const isExpanded = expandedSections[group.label] ?? true
+            const isExpanded = expandedSections[group.label] ?? false
+            const panelId = `nav-panel-${group.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
             return (
               <div key={group.label} className="nav-group">
                 <button
                   type="button"
                   className="nav-group-toggle"
-                  onClick={() => setExpandedSections((current) => ({ ...current, [group.label]: !isExpanded }))}
+                  onClick={() => toggleSection(group.label)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+                      event.preventDefault()
+                      toggleSection(group.label)
+                    }
+                  }}
                   aria-expanded={isExpanded}
+                  aria-controls={panelId}
                 >
                   <span className="nav-group-label">{group.label}</span>
-                  <span className="nav-chevron">{isExpanded ? '▾' : '▸'}</span>
+                  <span className="nav-chevron" aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
                 </button>
                 {isExpanded && (
-                  <div className="nav-items">
+                  <div id={panelId} className="nav-items" role="list">
                     {group.items.map(({ label, icon: Icon, to, future, requiresAdmin }) => (
                       <NavLink
                         key={label}
@@ -708,8 +747,8 @@ function AuthenticatedAppShell({
             <input aria-label="Global search" placeholder="Global search (future functionality)" />
           </div>
           <div className="topbar-actions">
-            <button type="button" className="ghost-button">New prospect</button>
-            <button type="button" className="primary-button">Coming in Milestone 2</button>
+            <Link to="/quick-capture" className="primary-button" aria-label="Create a quick capture record">Quick capture</Link>
+            <Link to="/quick-capture" className="ghost-button" aria-label="Create a new prospect">New prospect</Link>
           </div>
           <div className="user-menu">
             <div className="user-avatar">{userDisplayName.slice(0, 2).toUpperCase()}</div>
@@ -759,11 +798,13 @@ function DashboardPage() {
     duplicates: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     const loadStats = async () => {
       const client = supabase
       if (!client) {
+        setLoadError('Dashboard data is unavailable because Supabase is not configured.')
         setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0, openWorkItems: 0, overdueWorkItems: 0, optOuts: 0, duplicates: 0 })
         setLoading(false)
         return
@@ -773,30 +814,40 @@ function DashboardPage() {
         const baseQuery = client.from(tableName).select('id', { count: 'exact', head: true })
         const query = modifier ? modifier(baseQuery) : baseQuery
         const result = query ? await query : null
+        if (result?.error) {
+          throw result.error
+        }
         return result?.count ?? 0
       }
 
-      const [prospects, businesses, campaigns, nominations, queue, duplicates, optOuts] = await Promise.all([
-        countTable('prospects'),
-        countTable('businesses'),
-        countTable('campaigns'),
-        countTable('nominations'),
-        countTable('workflow_assignments', (query) => typeof query?.neq === 'function' ? query.neq('status', 'completed') : null),
-        countTable('possible_duplicates', (query) => typeof query?.eq === 'function' ? query.eq('review_status', 'pending') : null),
-        countTable('opt_outs'),
-      ])
+      try {
+        const [prospects, businesses, campaigns, nominations, queue, duplicates, optOuts] = await Promise.all([
+          countTable('prospects'),
+          countTable('businesses'),
+          countTable('campaigns'),
+          countTable('nominations'),
+          countTable('workflow_assignments', (query) => typeof query?.neq === 'function' ? query.neq('status', 'completed') : null),
+          countTable('possible_duplicates', (query) => typeof query?.eq === 'function' ? query.eq('review_status', 'pending') : null),
+          countTable('opt_outs'),
+        ])
 
-      setStats({
-        prospects,
-        businesses,
-        campaigns,
-        nominations,
-        openWorkItems: queue,
-        duplicates,
-        optOuts,
-        overdueWorkItems: 0,
-      })
-      setLoading(false)
+        setStats({
+          prospects,
+          businesses,
+          campaigns,
+          nominations,
+          openWorkItems: queue,
+          duplicates,
+          optOuts,
+          overdueWorkItems: 0,
+        })
+        setLoadError(null)
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : 'The dashboard could not load repository data.')
+        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0, openWorkItems: 0, overdueWorkItems: 0, optOuts: 0, duplicates: 0 })
+      } finally {
+        setLoading(false)
+      }
     }
 
     void loadStats()
@@ -809,8 +860,15 @@ function DashboardPage() {
           <p className="eyebrow">Platform status</p>
           <h1>Dashboard</h1>
         </div>
-        <button type="button" className="primary-button">Platform review</button>
+        <Link to="/quick-capture" className="primary-button" aria-label="Start a quick capture">Quick capture</Link>
       </div>
+
+      {loadError && (
+        <div className="login-alert login-alert-error" role="alert">
+          <strong>Unable to load dashboard data</strong>
+          <span>{loadError}</span>
+        </div>
+      )}
 
       <section className="summary-row">
         <article className="metric-card tone-navy">
@@ -1002,11 +1060,7 @@ function WorkQueuePage() {
 }
 
 function VerificationQueuePage() {
-  const items = [
-    { company: 'Northside Studio', status: 'Manual review', confidence: '93%' },
-    { company: 'Greene & Co Events', status: 'Ready', confidence: '88%' },
-    { company: 'Atlas Brewing Co.', status: 'Blocked by consent', confidence: '76%' },
-  ]
+  const items: Array<{ company: string; status: string; confidence: string }> = []
 
   return (
     <div className="page">
@@ -1017,21 +1071,434 @@ function VerificationQueuePage() {
         </div>
         <button type="button" className="primary-button">New verification</button>
       </div>
-      <div className="panel table-panel">
-        <table className="data-table">
-          <thead>
-            <tr><th>Company</th><th>Verification status</th><th>Confidence</th></tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.company}>
-                <td>{item.company}</td>
-                <td><span className="pill neutral">{item.status}</span></td>
-                <td>{item.confidence}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {items.length ? (
+        <div className="panel table-panel">
+          <table className="data-table">
+            <thead>
+              <tr><th>Company</th><th>Verification status</th><th>Confidence</th></tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.company}>
+                  <td>{item.company}</td>
+                  <td><span className="pill neutral">{item.status}</span></td>
+                  <td>{item.confidence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="panel empty-state">
+          <h2>No verification items</h2>
+          <p>Verified records and consent checks will appear here when the review pipeline is active.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function QuickCaptureStandaloneLayout({
+  currentUserId,
+  userDisplayName,
+  userRoleDisplay,
+  onSignOut,
+  signingOut,
+}: {
+  currentUserId: string | null
+  userDisplayName: string
+  userRoleDisplay: string
+  onSignOut: () => Promise<void>
+  signingOut: boolean
+}) {
+  return (
+    <div className="quick-capture-shell">
+      <header className="quick-capture-topbar">
+        <div className="quick-capture-brand" aria-label="D9Network logo">
+          <img src="/images/d9network-logo.png" alt="D9Network" className="quick-capture-logo" />
+        </div>
+        <div className="quick-capture-header-actions">
+          <Link to="/dashboard" className="ghost-button" aria-label="Return to dashboard">Dashboard</Link>
+          <div className="user-menu compact-user-menu">
+            <div className="user-avatar">{userDisplayName.slice(0, 2).toUpperCase()}</div>
+            <div className="user-meta">
+              <strong>{userDisplayName}</strong>
+              <span>{userRoleDisplay}</span>
+            </div>
+            <button type="button" className="icon-button" aria-label="Log out" onClick={() => void onSignOut()} disabled={signingOut}>
+              <LogOut size={16} />
+            </button>
+          </div>
+        </div>
+      </header>
+      <main className="quick-capture-page">
+        <QuickCapturePage currentUserId={currentUserId} standalone />
+      </main>
+    </div>
+  )
+}
+
+function QuickCapturePage({ currentUserId, standalone = false }: { currentUserId: string | null; standalone?: boolean }) {
+  const initialForm = {
+    prospectType: 'Unknown',
+    socialPlatform: 'Unknown',
+    socialHandle: '',
+    socialProfileUrl: '',
+    websiteUrl: '',
+    firstName: '',
+    lastName: '',
+    businessName: '',
+    email: '',
+    phone: '',
+    suspectedAffiliation: '',
+    city: '',
+    state: '',
+    sourceType: 'Team discovery',
+    sourceName: '',
+    notes: '',
+    followUpPriority: 'Normal',
+    assignedTo: '',
+  }
+
+  const [form, setForm] = useState(initialForm)
+  const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSummary, setSaveSummary] = useState<{ prospectName: string; duplicateStatus: string; queueStatus: string } | null>(null)
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  const [showDetails, setShowDetails] = useState(false)
+
+  const updateField = (field: keyof typeof initialForm, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }))
+    setValidationErrors((current) => ({ ...current, [field]: '' }))
+  }
+
+  const handleDuplicateCheck = async (payload: ReturnType<typeof normalizeQuickCapturePayload>) => {
+    if (!supabase) return null
+
+    const filters: string[] = []
+    if (payload.email) filters.push(`email.eq.${payload.email}`)
+    if (payload.phone) filters.push(`phone.eq.${payload.phone}`)
+    if (payload.businessName) filters.push(`business_name.eq.${payload.businessName}`)
+    if (payload.websiteUrl) filters.push(`website.eq.${payload.websiteUrl}`)
+    if (payload.socialProfileUrl) filters.push(`source_url.eq.${payload.socialProfileUrl}`)
+    if (payload.socialHandle) {
+      const handle = payload.socialHandle.replace(/^@/, '')
+      filters.push(`instagram_handle.eq.${handle}`)
+      filters.push(`facebook_url.like.%${handle}%`)
+      filters.push(`linked_in_url.like.%${handle}%`)
+    }
+
+    if (!filters.length) return null
+
+    const { data, error } = await supabase
+      .from('prospects')
+      .select('id, business_name, display_name, email, phone, website, source_url')
+      .or(filters.join(',') as string)
+
+    if (!error && data?.length) {
+      return data[0]
+    }
+
+    return null
+  }
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const nextErrors = validateQuickCaptureForm(form)
+    setValidationErrors(nextErrors)
+    if (Object.keys(nextErrors).length) {
+      setSaveError('Please correct the highlighted fields before saving the quick capture record.')
+      return
+    }
+
+    setSaving(true)
+    setSaveError(null)
+    setSaveStatus(null)
+
+    const payload = normalizeQuickCapturePayload(form)
+    const workflowStatus = deriveWorkflowStatus(form)
+    let duplicate: any = null
+
+    if (supabase) {
+      duplicate = await handleDuplicateCheck(payload)
+      if (duplicate) {
+        setSaving(false)
+        setSaveError(`Duplicate prospect detected for ${duplicate.business_name || duplicate.display_name || 'this record'}. Review the existing entry before creating another quick capture.`)
+        return
+      }
+
+      const insertPayload = {
+        business_name: payload.businessName || null,
+        display_name: payload.displayName || null,
+        primary_contact_name: payload.fullName || null,
+        email: payload.email || null,
+        phone: payload.phone || null,
+        website: payload.websiteUrl || null,
+        city: payload.city || null,
+        state: payload.state || null,
+        source_url: payload.socialProfileUrl || payload.websiteUrl || null,
+        workflow_status: workflowStatus,
+        d9_connection_status: 'unknown',
+        consent_status: 'unknown',
+        short_description: payload.notes || null,
+        created_by: currentUserId,
+        instagram_handle: payload.socialPlatform === 'Instagram' ? payload.socialHandle || null : null,
+        facebook_url: payload.socialPlatform === 'Facebook' ? payload.socialProfileUrl || null : null,
+        linked_in_url: payload.socialPlatform === 'LinkedIn' ? payload.socialProfileUrl || null : null,
+      }
+
+      const { data, error } = await supabase.from('prospects').insert(insertPayload).select('id')
+      if (error) {
+        setSaving(false)
+        setSaveError(error.message || 'Unable to save the quick capture record.')
+        return
+      }
+
+      const prospectId = data?.[0]?.id
+      if (prospectId) {
+        await supabase.from('workflow_events').insert({
+          entity_type: 'prospect',
+          entity_id: prospectId,
+          event_type: 'created',
+          actor_user_id: currentUserId,
+          details: {
+            source: payload.sourceType,
+            source_name: payload.sourceName,
+            workflow_status: workflowStatus,
+            quick_capture: true,
+          },
+        })
+
+        const sourceEventResult = await supabase.from('prospect_source_events').insert({
+          prospect_id: prospectId,
+          source_id: null,
+          source_url: payload.socialProfileUrl || payload.websiteUrl || null,
+          event_type: 'discovered',
+          details: {
+            source: payload.sourceType,
+            source_name: payload.sourceName,
+            platform: payload.socialPlatform,
+            handle: payload.socialHandle,
+            origin: 'quick_capture',
+          },
+        })
+
+        if (sourceEventResult?.error) {
+          // Ignore secondary source tracking issues; the core prospect record remains the source of truth.
+        }
+
+        if (workflowStatus === 'outreach_needed' || workflowStatus === 'new') {
+          const assignmentResult = await supabase.from('workflow_assignments').insert({
+            entity_type: 'prospect',
+            entity_id: prospectId,
+            assigned_to: currentUserId,
+            assigned_by: currentUserId,
+            priority: payload.followUpPriority.toLowerCase(),
+            status: 'active',
+          })
+
+          if (assignmentResult?.error) {
+            // Ignore assignment failures at this stage; the prospect still exists in the active queue/state.
+          }
+        }
+      }
+    }
+
+    const prospectName = payload.displayName || payload.businessName || payload.firstName || payload.socialHandle || payload.socialProfileUrl || 'New prospect'
+    setSaveSummary({
+      prospectName,
+      duplicateStatus: duplicate ? 'Exact or likely duplicate detected' : 'No duplicate match found',
+      queueStatus: workflowStatus === 'outreach_needed' ? 'Ready for outreach' : workflowStatus === 'new' ? 'Needs enrichment' : workflowStatus,
+    })
+    setSaveStatus('Prospect captured successfully and routed to the discovery workflow.')
+    setForm(initialForm)
+    setSaving(false)
+  }
+
+  return (
+    <div className="page quick-capture-page-root">
+      {!standalone && (
+        <div className="page-header">
+          <div>
+            <p className="eyebrow">Discovery</p>
+            <h1>Quick Capture</h1>
+          </div>
+        </div>
+      )}
+
+      <div className="panel quick-capture-panel">
+        {standalone && <div className="quick-capture-header-inline"><p className="eyebrow">Discovery</p><h1>Quick Capture</h1></div>}
+        {!standalone && <div className="panel-header"><h2>Fast intake</h2></div>}
+        <div className="quick-capture-helper">At least one identifier is required: handle, URL, email, phone, name, or business name.</div>
+        <form className="stack-form" onSubmit={handleSubmit}>
+          <div className="form-grid quick-capture-grid">
+            <label className="field" htmlFor="quick-capture-social-platform">
+              <span>Social platform</span>
+              <select id="quick-capture-social-platform" value={form.socialPlatform} onChange={(event) => updateField('socialPlatform', event.target.value)}>
+                <option value="Instagram">Instagram</option>
+                <option value="Facebook">Facebook</option>
+                <option value="LinkedIn">LinkedIn</option>
+                <option value="TikTok">TikTok</option>
+                <option value="X">X</option>
+                <option value="Website">Website</option>
+                <option value="Other">Other</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+            </label>
+
+            <label className="field" htmlFor="quick-capture-prospect-type">
+              <span>Prospect type</span>
+              <select id="quick-capture-prospect-type" value={form.prospectType} onChange={(event) => updateField('prospectType', event.target.value)}>
+                <option value="Individual">Individual</option>
+                <option value="Business owner">Business owner</option>
+                <option value="Business">Business</option>
+                <option value="Organization">Organization</option>
+                <option value="Partner">Partner</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+            </label>
+
+            <label className="field" htmlFor="quick-capture-social-handle">
+              <span>Social handle</span>
+              <input id="quick-capture-social-handle" aria-label="Social handle" value={form.socialHandle} onChange={(event) => updateField('socialHandle', event.target.value)} placeholder="@northsidecreative" />
+              {validationErrors.socialHandle && <small className="field-error">{validationErrors.socialHandle}</small>}
+            </label>
+
+            <label className="field" htmlFor="quick-capture-social-profile-url">
+              <span>Social or profile URL</span>
+              <input id="quick-capture-social-profile-url" aria-label="Social profile URL" value={form.socialProfileUrl} onChange={(event) => updateField('socialProfileUrl', event.target.value)} placeholder="https://instagram.com/..." />
+              {validationErrors.socialProfileUrl && <small className="field-error">{validationErrors.socialProfileUrl}</small>}
+            </label>
+
+            <label className="field" htmlFor="quick-capture-business-name">
+              <span>Business name</span>
+              <input id="quick-capture-business-name" aria-label="Business name" value={form.businessName} onChange={(event) => updateField('businessName', event.target.value)} placeholder="Northside Studio" />
+            </label>
+
+            <label className="field" htmlFor="quick-capture-email">
+              <span>Email</span>
+              <input id="quick-capture-email" aria-label="Email" type="text" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="hello@northside.com" />
+              {validationErrors.email && <small className="field-error">{validationErrors.email}</small>}
+            </label>
+
+            <label className="field" htmlFor="quick-capture-phone">
+              <span>Phone</span>
+              <input id="quick-capture-phone" aria-label="Phone" value={form.phone} onChange={(event) => updateField('phone', event.target.value)} placeholder="(555) 123-4567" />
+              {validationErrors.phone && <small className="field-error">{validationErrors.phone}</small>}
+            </label>
+
+            <label className="field full-width" htmlFor="quick-capture-notes">
+              <span>Notes</span>
+              <textarea id="quick-capture-notes" value={form.notes} onChange={(event) => updateField('notes', event.target.value)} rows={3} placeholder="Capture relevant context, connection details, or intent." />
+            </label>
+          </div>
+
+          <button type="button" className="collapse-trigger" onClick={() => setShowDetails((current) => !current)} aria-expanded={showDetails}>
+            {showDetails ? 'Hide more details' : 'Add more details'}
+          </button>
+
+          {showDetails && (
+            <div className="form-grid quick-capture-grid quick-capture-details">
+              <label className="field" htmlFor="quick-capture-first-name">
+                <span>First name</span>
+                <input id="quick-capture-first-name" value={form.firstName} onChange={(event) => updateField('firstName', event.target.value)} placeholder="Leah" />
+              </label>
+
+              <label className="field" htmlFor="quick-capture-last-name">
+                <span>Last name</span>
+                <input id="quick-capture-last-name" value={form.lastName} onChange={(event) => updateField('lastName', event.target.value)} placeholder="Morgan" />
+              </label>
+
+              <label className="field" htmlFor="quick-capture-website-url">
+                <span>Website URL</span>
+                <input id="quick-capture-website-url" value={form.websiteUrl} onChange={(event) => updateField('websiteUrl', event.target.value)} placeholder="https://northside.com" />
+                {validationErrors.websiteUrl && <small className="field-error">{validationErrors.websiteUrl}</small>}
+              </label>
+
+              <label className="field" htmlFor="quick-capture-affiliation">
+                <span>Suspected D9 organization or affiliation</span>
+                <input id="quick-capture-affiliation" value={form.suspectedAffiliation} onChange={(event) => updateField('suspectedAffiliation', event.target.value)} placeholder="Greek chapters, local business, partner" />
+              </label>
+
+              <label className="field" htmlFor="quick-capture-city">
+                <span>City</span>
+                <input id="quick-capture-city" value={form.city} onChange={(event) => updateField('city', event.target.value)} placeholder="Dallas" />
+              </label>
+
+              <label className="field" htmlFor="quick-capture-state">
+                <span>State</span>
+                <input id="quick-capture-state" value={form.state} onChange={(event) => updateField('state', event.target.value)} placeholder="TX" />
+              </label>
+
+              <label className="field" htmlFor="quick-capture-source-type">
+                <span>Source type</span>
+                <select id="quick-capture-source-type" value={form.sourceType} onChange={(event) => updateField('sourceType', event.target.value)}>
+                  <option value="Team discovery">Team discovery</option>
+                  <option value="Referral">Referral</option>
+                  <option value="Alliance partner">Alliance partner</option>
+                  <option value="Social media">Social media</option>
+                  <option value="Event">Event</option>
+                  <option value="Website">Website</option>
+                  <option value="Organization list">Organization list</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+
+              <label className="field" htmlFor="quick-capture-source-name">
+                <span>Source or referral name</span>
+                <input id="quick-capture-source-name" value={form.sourceName} onChange={(event) => updateField('sourceName', event.target.value)} placeholder="Instagram search, outreach list" />
+              </label>
+
+              <label className="field" htmlFor="quick-capture-priority">
+                <span>Follow-up priority</span>
+                <select id="quick-capture-priority" value={form.followUpPriority} onChange={(event) => updateField('followUpPriority', event.target.value)}>
+                  <option value="Low">Low</option>
+                  <option value="Normal">Normal</option>
+                  <option value="High">High</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
+              </label>
+
+              <label className="field" htmlFor="quick-capture-assigned-to">
+                <span>Assign to team member</span>
+                <input id="quick-capture-assigned-to" value={form.assignedTo} onChange={(event) => updateField('assignedTo', event.target.value)} placeholder="Owner or teammate" />
+              </label>
+            </div>
+          )}
+
+          {saveError && <div className="login-alert login-alert-error" role="alert"><strong>Quick capture incomplete</strong><span>{saveError}</span></div>}
+          {saveStatus && (
+            <div className="login-alert login-alert-success" role="alert">
+              <strong>Quick capture saved</strong>
+              <span>{saveStatus}</span>
+            </div>
+          )}
+
+          {saveSummary && (
+            <div className="quick-capture-success" role="status">
+              <div className="quick-capture-success-header">
+                <h3>Prospect captured successfully</h3>
+              </div>
+              <p><strong>{saveSummary.prospectName}</strong></p>
+              <ul>
+                <li>Duplicate screening: {saveSummary.duplicateStatus}</li>
+                <li>Queue/status: {saveSummary.queueStatus}</li>
+              </ul>
+              <div className="quick-capture-success-actions">
+                <Link to="/prospects" className="primary-button">View Prospect</Link>
+                <button type="button" className="ghost-button" onClick={() => { setSaveSummary(null); setSaveStatus(null); setSaveError(null) }}>Capture Another</button>
+                <Link to="/dashboard" className="ghost-button">Return to Dashboard</Link>
+              </div>
+            </div>
+          )}
+
+          {!saveSummary && (
+            <div className="form-actions">
+              <button type="submit" className="primary-button" disabled={saving}>{saving ? 'Saving...' : 'Save quick capture'}</button>
+            </div>
+          )}
+        </form>
       </div>
     </div>
   )
@@ -2385,14 +2852,6 @@ function CampaignPage() {
 }
 
 function IntegrationsPage() {
-  const integrations = [
-    { name: 'Brilliant Directories', status: 'Read-only integration', environment: 'Production-ready interface', owner: 'Membership' },
-    { name: 'D9 Intelligence Dashboard', status: 'Read-only integration', environment: 'Reporting interface', owner: 'Leadership' },
-    { name: 'Instagram', status: 'Blocked', environment: 'Future social publishing', owner: 'Content' },
-    { name: 'Facebook', status: 'Blocked', environment: 'Future social publishing', owner: 'Content' },
-    { name: 'Email Provider', status: 'Configurable', environment: 'Approved provider adapter', owner: 'Platform' },
-  ]
-
   return (
     <div className="page">
       <div className="page-header">
@@ -2401,19 +2860,9 @@ function IntegrationsPage() {
           <h1>Integrations</h1>
         </div>
       </div>
-      <div className="cards-grid equal-grid">
-        {integrations.map((integration) => (
-          <article key={integration.name} className="panel card-panel">
-            <div className="panel-header compact">
-              <h3>{integration.name}</h3>
-              <span className="pill navy">{integration.status}</span>
-            </div>
-            <dl className="meta-list">
-              <div><dt>Environment</dt><dd>{integration.environment}</dd></div>
-              <div><dt>Owner</dt><dd>{integration.owner}</dd></div>
-            </dl>
-          </article>
-        ))}
+      <div className="panel empty-state">
+        <h2>No integrations configured</h2>
+        <p>Approved provider definitions will appear here once the platform is configured for live integrations.</p>
       </div>
     </div>
   )
@@ -2454,12 +2903,7 @@ function AuditPage() {
 }
 
 function UsersAndRolesPage() {
-  const staffUsers = [
-    { name: 'Tina Morgan', role: 'Platform Administrator', status: 'Active' },
-    { name: 'Elliot Brooks', role: 'Campaign Manager', status: 'Active' },
-    { name: 'Jordan Park', role: 'Operator', status: 'Active' },
-    { name: 'Ava Lopez', role: 'Intern or Researcher', status: 'Pending' },
-  ]
+  const staffUsers: Array<{ name: string; role: string; status: string }> = []
 
   return (
     <div className="page">
@@ -2470,18 +2914,25 @@ function UsersAndRolesPage() {
         </div>
         <button type="button" className="primary-button">Assign role</button>
       </div>
-      <div className="panel table-panel">
-        <table className="data-table">
-          <thead>
-            <tr><th>Name</th><th>Role</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            {staffUsers.map((person) => (
-              <tr key={person.name}><td>{person.name}</td><td>{person.role}</td><td><span className="pill neutral">{person.status}</span></td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {staffUsers.length ? (
+        <div className="panel table-panel">
+          <table className="data-table">
+            <thead>
+              <tr><th>Name</th><th>Role</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {staffUsers.map((person) => (
+                <tr key={person.name}><td>{person.name}</td><td>{person.role}</td><td><span className="pill neutral">{person.status}</span></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="panel empty-state">
+          <h2>No staff assignments yet</h2>
+          <p>Platform administrators can assign roles once the approved user roster is available.</p>
+        </div>
+      )}
     </div>
   )
 }
