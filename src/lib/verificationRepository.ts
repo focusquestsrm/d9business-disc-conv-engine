@@ -43,6 +43,105 @@ export type VerificationBatchRecord = {
 const client = supabase
 
 export const verificationRepository = {
+  async assignReviewer(caseId: string, reviewerUserId: string, reason?: string | null) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('assign_verification_reviewer', {
+      p_case_id: caseId,
+      p_reviewer_user_id: reviewerUserId,
+      p_reason: reason ?? null,
+    })
+    if (error) throw error
+    return data
+  },
+
+  async transitionCaseStatus(caseId: string, newStatus: string, reason?: string | null, result?: string | null) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('transition_verification_case_status', {
+      p_case_id: caseId,
+      p_new_status: newStatus,
+      p_reason: reason ?? null,
+      p_result: result ?? null,
+    })
+    if (error) throw error
+    return data
+  },
+
+  async markBatchExported(batchId: string, exportedBy?: string | null, notes?: string | null) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('mark_verification_batch_exported', {
+      p_batch_id: batchId,
+      p_exported_by: exportedBy ?? null,
+      p_notes: notes ?? null,
+    })
+    if (error) throw error
+    return data
+  },
+
+  async markBatchSent(batchId: string, sentBy?: string | null, notes?: string | null) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('mark_verification_batch_sent', {
+      p_batch_id: batchId,
+      p_sent_by: sentBy ?? null,
+      p_notes: notes ?? null,
+    })
+    if (error) throw error
+    return data
+  },
+
+  async recordResponseReceived(caseId: string, organizationName: string, result: string, reason?: string | null, notes?: string | null, verificationDate?: string | null) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('record_verification_response_received', {
+      p_case_id: caseId,
+      p_organization_name: organizationName,
+      p_result: result,
+      p_reason: reason ?? null,
+      p_notes: notes ?? null,
+      p_verification_date: verificationDate ?? new Date().toISOString(),
+    })
+    if (error) throw error
+    return data
+  },
+
+  async closeBatch(batchId: string, reason?: string | null) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('close_verification_batch', {
+      p_batch_id: batchId,
+      p_reason: reason ?? null,
+    })
+    if (error) throw error
+    return data
+  },
+
+  async cancelBatch(batchId: string, reason: string) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('cancel_verification_batch', {
+      p_batch_id: batchId,
+      p_reason: reason,
+    })
+    if (error) throw error
+    return data
+  },
+
+  async saveManualResult(caseId: string, result: string, reason?: string | null, notes?: string | null, verifiedBy?: string | null) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('save_manual_verification_result', {
+      p_case_id: caseId,
+      p_result: result,
+      p_reason: reason ?? null,
+      p_notes: notes ?? null,
+      p_verified_by: verifiedBy ?? null,
+    })
+    if (error) throw error
+    return data
+  },
+
+  async loadCaseHistory(caseId: string) {
+    if (!client) throw new Error('Supabase is not configured.')
+    const { data, error } = await client.rpc('get_verification_case_history', { p_case_id: caseId })
+    if (error) throw error
+    return data ?? []
+  },
+
   async listCases() {
     if (!client) {
       throw new Error('Supabase is not configured.')

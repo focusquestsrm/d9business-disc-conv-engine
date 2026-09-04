@@ -30,12 +30,12 @@ import {
   buildVerificationExportColumns,
   buildVerificationMetrics,
   canTransitionVerificationStatus,
-  previewVerificationImport,
   validateMembershipClaim,
-  validateVerificationResult,
 } from './lib/membershipVerification'
 import { deriveWorkflowStatus, normalizeQuickCapturePayload, validateQuickCaptureForm } from './lib/quickCapture'
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
+import { verificationRepository } from './lib/verificationRepository'
+import { buildVerificationWorkbook, parseVerificationWorkbook } from './lib/verificationWorkbook'
 import { buildWorkQueueSummary, filterWorkItems, normalizeWorkItem } from './lib/workqueue'
 
 type NavItem = {
@@ -1133,6 +1133,8 @@ function VerificationQueuePage() {
     organizationResult: string
     organizationReason: string
   }>>([])
+  const [queueNotice, setQueueNotice] = useState<string | null>(null)
+  const [queueError, setQueueError] = useState<string | null>(null)
 
   useEffect(() => {
     const loadVerificationCases = async () => {
@@ -1145,11 +1147,15 @@ function VerificationQueuePage() {
         return
       }
 
-      const { data, error } = await supabase.from('verification_cases').select('*').order('created_at', { ascending: false })
-      if (!error) {
-        setItems((data ?? []) as VerificationCase[])
+      try {
+        const data = await verificationRepository.listCases()
+        setItems(data as VerificationCase[])
+        setQueueError(null)
+      } catch (error) {
+        setQueueError(error instanceof Error ? error.message : 'Verification queue data could not be loaded.')
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
 
     void loadVerificationCases()
@@ -1157,68 +1163,25 @@ function VerificationQueuePage() {
 
   const summary = buildVerificationMetrics(items.map((item) => ({ status: item.status })))
 
+  const refreshCases = async () => {
+    const data = await verificationRepository.listCases()
+    setItems(data as VerificationCase[])
+  }
+
   const handleExportWorkbook = async () => {
     setExporting(true)
     try {
-      const workbook = new ExcelJS.Workbook()
-      workbook.creator = 'D9Network'
-      workbook.created = new Date()
-      workbook.modified = new Date()
-
-      const worksheet = workbook.addWorksheet('Verification Request')
-      worksheet.views = [{ state: 'frozen', ySplit: 1 }]
-      worksheet.autoFilter = { from: 'A1', to: `${String.fromCharCode(65 + buildVerificationExportColumns().length - 1)}1` }
-
-      const columns = buildVerificationExportColumns()
-      worksheet.columns = columns.map((columnName, index) => ({
-        header: columnName,
-        key: `column_${index}`,
-        width: Math.max(16, Math.min(30, columnName.length + 4)),
+      const rows = items.map((item) => ({
+        batchId: item.batch_id ?? 'BATCH-N/A',
+        verificationCaseId: item.case_id,
+        recordId: item.id,
+        legalFirstName: item.claimant_name.split(' ')[0] ?? '',
+        legalLastName: item.claimant_name.split(' ').slice(1).join(' ') || '',
+        claimedOrganization: item.claimed_organization,
+        organizationResult: item.result === 'PENDING' ? 'NEEDS_FOLLOW_UP' : item.result,
+        organizationReason: item.verification_reason ?? '',
       }))
-
-      items.forEach((item) => {
-        worksheet.addRow([
-          item.batch_id ?? 'BATCH-N/A',
-          item.case_id,
-          item.id,
-          item.claimant_name.split(' ')[0] ?? '',
-          '',
-          item.claimant_name.split(' ').slice(1).join(' ') || '',
-          '',
-          '',
-          '',
-          '',
-          item.claimed_organization,
-          item.claimed_organization,
-          'fraternity',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          item.result === 'PENDING' ? 'NEEDS_FOLLOW_UP' : item.result,
-          item.verification_reason ?? '',
-          '',
-          '',
-          item.created_at,
-        ])
-      })
-
-      worksheet.getRow(1).font = { bold: true }
-      worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAF7' } }
-
-      const instructions = workbook.addWorksheet('Instructions')
-      instructions.columns = [{ header: 'Instructions', key: 'instruction', width: 120 }]
-      instructions.addRow(['Verification workbook export for D9 organization review.'])
-      instructions.addRow(['Use the controlled Organization Result values: VERIFIED, UNABLE_TO_VERIFY, REJECTED, NEEDS_FOLLOW_UP.'])
-      instructions.addRow(['Batch ID, Verification Case ID, and D9Network Record ID must remain unchanged.'])
-      instructions.addRow(['Do not include internal-only assignment metadata, personal notes, or confidential audit data.'])
-      instructions.addRow(['Return only the approved verification request sheet and do not evaluate formulas.'])
-
+      const workbook = buildVerificationWorkbook(rows)
       const buffer = await workbook.xlsx.writeBuffer()
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const url = URL.createObjectURL(blob)
@@ -1227,6 +1190,9 @@ function VerificationQueuePage() {
       anchor.download = `d9-verification-${new Date().toISOString().slice(0, 10)}.xlsx`
       anchor.click()
       URL.revokeObjectURL(url)
+      setQueueNotice('Verification workbook exported successfully.')
+    } catch (error) {
+      setQueueError(error instanceof Error ? error.message : 'The workbook could not be exported.')
     } finally {
       setExporting(false)
     }
@@ -1254,43 +1220,27 @@ function VerificationQueuePage() {
         throw new Error('Workbook headers do not match the approved verification request template.')
       }
 
-      const dataRows = rows.filter((row) => Array.isArray(row) && row.some((value) => String(value ?? '').trim() !== ''))
-      const payloadRows = dataRows.slice(headerRowIndex + 1).map((row) => {
-        const values = Array.isArray(row) ? row : []
-        return {
-          batchId: String(values[0] ?? '').trim(),
-          verificationCaseId: String(values[1] ?? '').trim(),
-          recordId: String(values[2] ?? '').trim(),
-          legalFirstName: String(values[3] ?? '').trim(),
-          legalLastName: String(values[6] ?? '').trim(),
-          claimedOrganization: String(values[10] ?? '').trim(),
-          organizationResult: String(values[21] ?? '').trim(),
-          organizationReason: String(values[22] ?? '').trim(),
-        }
-      }).filter((row) => row.verificationCaseId || row.batchId || row.recordId || row.claimedOrganization)
-
-      const preview = previewVerificationImport(
-        payloadRows,
-        payloadRows[0]?.batchId || 'BATCH-N/A',
-        payloadRows[0]?.claimedOrganization || 'Alpha Phi Alpha',
-        new Set(items.map((item) => item.case_id)),
-      )
-
-      const acceptedRows = payloadRows.filter((row) => {
-        const caseId = row.verificationCaseId?.trim()
-        const validBatch = row.batchId === (payloadRows[0]?.batchId || 'BATCH-N/A')
-        const validOrg = row.claimedOrganization?.trim().toLowerCase() === (payloadRows[0]?.claimedOrganization || 'Alpha Phi Alpha').trim().toLowerCase()
-        const validId = Boolean(caseId) && Boolean(row.recordId?.trim())
-        const allowedResult = row.organizationResult ? validateVerificationResult(row.organizationResult) : false
-        const reasonRequired = ['UNABLE_TO_VERIFY', 'REJECTED', 'NEEDS_FOLLOW_UP'].includes(row.organizationResult ?? '')
-        const reasonPresent = Boolean((row.organizationReason ?? '').trim())
-        const alreadyProcessed = items.some((item) => item.case_id === caseId)
-
-        return validBatch && validOrg && validId && allowedResult && !(reasonRequired && !reasonPresent) && !alreadyProcessed
+      const preview = await parseVerificationWorkbook(buffer, {
+        batchId: items[0]?.batch_id ?? 'BATCH-N/A',
+        organization: items[0]?.claimed_organization ?? 'Alpha Phi Alpha',
+        alreadyProcessedCaseIds: new Set(items.map((item) => item.case_id)),
       })
 
-      setImportRows(acceptedRows)
-      setImportPreview(preview)
+      setImportRows(preview.acceptedRows.map((row) => ({
+        batchId: row.batchId,
+        verificationCaseId: row.verificationCaseId,
+        recordId: row.recordId,
+        legalFirstName: row.legalFirstName,
+        legalLastName: row.legalLastName,
+        claimedOrganization: row.claimedOrganization,
+        organizationResult: row.organizationResult,
+        organizationReason: row.organizationReason,
+      })))
+      setImportPreview({
+        validRows: preview.validRows,
+        invalidRows: preview.invalidRows,
+        alreadyProcessedRows: preview.alreadyProcessedRows,
+      })
       setImportError(preview.invalidRows ? 'Workbook contains invalid or mismatched verification rows. Review the preview before committing.' : null)
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'The workbook could not be parsed.')
@@ -1353,9 +1303,11 @@ function VerificationQueuePage() {
 
       if (rpcError) throw rpcError
 
+      await refreshCases()
       setImportRows([])
       setImportPreview(null)
       setImportError(null)
+      setQueueNotice('Verification import committed successfully and the queue has been refreshed.')
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'The verification workbook could not be committed.')
     }
@@ -1384,6 +1336,8 @@ function VerificationQueuePage() {
         <article className="metric-card tone-navy"><span className="metric-label">Needs follow-up</span><strong>{summary.needsFollowUp}</strong><span className="metric-delta">Review</span></article>
       </section>
 
+      {queueNotice && <div className="login-alert" role="status"><strong>Verification update</strong><span>{queueNotice}</span></div>}
+      {queueError && <div className="login-alert login-alert-error" role="alert"><strong>Verification update</strong><span>{queueError}</span></div>}
       {importError && <div className="login-alert login-alert-error" role="alert"><strong>Import review</strong><span>{importError}</span></div>}
       {importPreview && (
         <div className="panel">
@@ -1432,27 +1386,51 @@ function VerificationQueuePage() {
 function VerificationBatchesPage() {
   const [batches, setBatches] = useState<Array<{ id: string; batch_code: string; organization: string; status: string; created_at: string }>>([])
   const [loading, setLoading] = useState(true)
+  const [batchNotice, setBatchNotice] = useState<string | null>(null)
+  const [batchError, setBatchError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const loadBatches = async () => {
-      if (!supabase) {
-        setBatches([
-          { id: 'b-1', batch_code: 'B-2026-001', organization: 'Alpha Phi Alpha', status: 'sent_to_organization', created_at: new Date().toISOString() },
-          { id: 'b-2', batch_code: 'B-2026-002', organization: 'Kappa Alpha Psi', status: 'draft', created_at: new Date().toISOString() },
-        ])
-        setLoading(false)
-        return
-      }
-
-      const { data, error } = await supabase.from('verification_batches').select('*').order('created_at', { ascending: false })
-      if (!error) {
-        setBatches((data ?? []) as Array<{ id: string; batch_code: string; organization: string; status: string; created_at: string }>)
-      }
+  const loadBatches = async () => {
+    if (!supabase) {
+      setBatches([
+        { id: 'b-1', batch_code: 'B-2026-001', organization: 'Alpha Phi Alpha', status: 'sent_to_organization', created_at: new Date().toISOString() },
+        { id: 'b-2', batch_code: 'B-2026-002', organization: 'Kappa Alpha Psi', status: 'draft', created_at: new Date().toISOString() },
+      ])
       setLoading(false)
+      return
     }
 
+    try {
+      const data = await verificationRepository.listBatches()
+      setBatches(data as Array<{ id: string; batch_code: string; organization: string; status: string; created_at: string }>)
+      setBatchError(null)
+    } catch (error) {
+      setBatchError(error instanceof Error ? error.message : 'Verification batches could not be loaded.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
     void loadBatches()
   }, [])
+
+  const handleBatchLifecycle = async (batchId: string, action: 'exported' | 'sent' | 'closed') => {
+    try {
+      if (action === 'exported') {
+        await verificationRepository.markBatchExported(batchId, null, 'Exported from the release 3A workbook flow.')
+      }
+      if (action === 'sent') {
+        await verificationRepository.markBatchSent(batchId, null, 'Sent to organization review.')
+      }
+      if (action === 'closed') {
+        await verificationRepository.closeBatch(batchId, 'Closed after review completion.')
+      }
+      await loadBatches()
+      setBatchNotice('Batch lifecycle updated successfully.')
+    } catch (error) {
+      setBatchError(error instanceof Error ? error.message : 'The batch action could not be completed.')
+    }
+  }
 
   return (
     <div className="page">
@@ -1463,15 +1441,17 @@ function VerificationBatchesPage() {
         </div>
       </div>
 
+      {batchNotice && <div className="login-alert" role="status"><strong>Batch update</strong><span>{batchNotice}</span></div>}
+      {batchError && <div className="login-alert login-alert-error" role="alert"><strong>Batch update</strong><span>{batchError}</span></div>}
       {loading ? (
         <div className="panel empty-state"><h2>Loading batches</h2><p>Restoring the submission windows and approval queue.</p></div>
       ) : batches.length ? (
         <div className="panel table-panel">
           <table className="data-table">
-            <thead><tr><th>Batch</th><th>Organization</th><th>Status</th><th>Created</th></tr></thead>
+            <thead><tr><th>Batch</th><th>Organization</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
             <tbody>
               {batches.map((batch) => (
-                <tr key={batch.id}><td>{batch.batch_code}</td><td>{batch.organization}</td><td><span className="pill neutral">{batch.status}</span></td><td>{new Date(batch.created_at).toLocaleDateString()}</td></tr>
+                <tr key={batch.id}><td>{batch.batch_code}</td><td>{batch.organization}</td><td><span className="pill neutral">{batch.status}</span></td><td>{new Date(batch.created_at).toLocaleDateString()}</td><td><div className="header-inline-actions"><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'exported')}>Export</button><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'sent')}>Send</button><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'closed')}>Close</button></div></td></tr>
               ))}
             </tbody>
           </table>
@@ -1546,9 +1526,10 @@ function MemberClaimsPage({ currentUserId }: { currentUserId: string | null }) {
     }
 
     if (supabase) {
-      const { error } = await supabase.from('verification_cases').insert(payload)
-      if (error) {
-        setStatus(error.message || 'The membership claim could not be saved.')
+      try {
+        await verificationRepository.createCase(payload)
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'The membership claim could not be saved.')
         setSaving(false)
         return
       }
