@@ -1,37 +1,32 @@
 import { describe, expect, it } from 'vitest'
 import { buildD9MatchCandidate, getWorkflowRoute, tenantAllowedRead } from './workflow'
 
-type RequiredNullSafetyInputs = {
-  discovery_sources: string | null
-  businesses: string | null
-  prospects: string | null
-  enforceWorkflowTransition: string | null
-  recordWorkflowTransition: string | null
-  setUpdatedAt: string | null
-  buildD9MatchCandidate: string | null
-  tenantAllowedRead: string | null
+type VerificationRow = {
+  category: string
+  object_name: string
+  check_name: string
+  expected_result: string | null
+  actual_result: string | null
+  status: 'PASS' | 'FAIL' | null
+  details?: string | null
 }
 
-type OverallRow = {
-  status: 'PASS' | 'FAIL'
+const evaluateNullSafetyFromRows = (rows: VerificationRow[]) => {
+  const hasNullRequiredField = rows.some((row) =>
+    [
+      row.category,
+      row.object_name,
+      row.check_name,
+      row.expected_result,
+      row.actual_result,
+      row.status,
+    ].some((value) => value == null),
+  )
+
+  return hasNullRequiredField ? { actual_result: 'NULL_FOUND', status: 'FAIL' } : { actual_result: 'NO_NULL', status: 'PASS' }
 }
 
-const evaluateNullSafety = (required: RequiredNullSafetyInputs) => {
-  const requiredValues = [
-    required.discovery_sources,
-    required.businesses,
-    required.prospects,
-    required.enforceWorkflowTransition,
-    required.recordWorkflowTransition,
-    required.setUpdatedAt,
-    required.buildD9MatchCandidate,
-    required.tenantAllowedRead,
-  ]
-
-  return requiredValues.some((value) => value == null) ? 'NULL_FOUND' : 'NO_NULL'
-}
-
-const summarizeOverall = (rows: OverallRow[]) => {
+const summarizeOverall = (rows: VerificationRow[]) => {
   const passCount = rows.filter((row) => row.status === 'PASS').length
   const failCount = rows.filter((row) => row.status === 'FAIL').length
 
@@ -64,44 +59,64 @@ describe('milestone 2 workflow security', () => {
     expect(candidate.match_reason).toBe('normalized_text_match')
   })
 
-  it('keeps the verifier null-safety logic focused on required substantive results and counts overall status correctly', () => {
-    const livePassRows: OverallRow[] = [
-      { status: 'PASS' },
-      { status: 'PASS' },
-      { status: 'PASS' },
-      { status: 'FAIL' },
+  it('derives safety from finalized substantive rows and ignores optional fields', () => {
+    const completeRows: VerificationRow[] = Array.from({ length: 51 }, () => ({
+      category: 'TABLE',
+      object_name: 'public.discovery_sources',
+      check_name: 'table_exists',
+      expected_result: 'EXISTS',
+      actual_result: 'EXISTS',
+      status: 'PASS',
+      details: 'present',
+    }))
+
+    const nullActualResultRows: VerificationRow[] = [
+      {
+        category: 'TABLE',
+        object_name: 'public.discovery_sources',
+        check_name: 'table_exists',
+        expected_result: 'EXISTS',
+        actual_result: null,
+        status: 'PASS',
+        details: 'present',
+      },
     ]
 
-    expect(
-      evaluateNullSafety({
-        discovery_sources: 'EXISTS',
-        businesses: 'EXISTS',
-        prospects: 'EXISTS',
-        enforceWorkflowTransition: 'EXISTS',
-        recordWorkflowTransition: 'EXISTS',
-        setUpdatedAt: 'EXISTS',
-        buildD9MatchCandidate: 'EXISTS',
-        tenantAllowedRead: 'EXISTS',
-      }),
-    ).toBe('NO_NULL')
+    const nullStatusRows: VerificationRow[] = [
+      {
+        category: 'TABLE',
+        object_name: 'public.discovery_sources',
+        check_name: 'table_exists',
+        expected_result: 'EXISTS',
+        actual_result: 'EXISTS',
+        status: null,
+        details: 'present',
+      },
+    ]
 
-    expect(
-      evaluateNullSafety({
-        discovery_sources: 'EXISTS',
-        businesses: 'EXISTS',
-        prospects: 'EXISTS',
-        enforceWorkflowTransition: null,
-        recordWorkflowTransition: 'EXISTS',
-        setUpdatedAt: 'EXISTS',
-        buildD9MatchCandidate: 'EXISTS',
-        tenantAllowedRead: 'EXISTS',
-      }),
-    ).toBe('NULL_FOUND')
+    const optionalNullDetailsRows: VerificationRow[] = [
+      {
+        category: 'TABLE',
+        object_name: 'public.discovery_sources',
+        check_name: 'table_exists',
+        expected_result: 'EXISTS',
+        actual_result: 'EXISTS',
+        status: 'PASS',
+        details: null,
+      },
+    ]
 
-    expect(summarizeOverall(livePassRows)).toEqual({
-      passCount: 3,
-      failCount: 1,
-      overall: 'FAIL',
-    })
+    expect(evaluateNullSafetyFromRows(completeRows)).toEqual({ actual_result: 'NO_NULL', status: 'PASS' })
+    expect(evaluateNullSafetyFromRows(nullActualResultRows)).toEqual({ actual_result: 'NULL_FOUND', status: 'FAIL' })
+    expect(evaluateNullSafetyFromRows(nullStatusRows)).toEqual({ actual_result: 'NULL_FOUND', status: 'FAIL' })
+    expect(evaluateNullSafetyFromRows(optionalNullDetailsRows)).toEqual({ actual_result: 'NO_NULL', status: 'PASS' })
+
+    const overallRows: VerificationRow[] = [
+      { category: 'TABLE', object_name: 'a', check_name: 'a', expected_result: 'EXISTS', actual_result: 'EXISTS', status: 'PASS', details: 'ok' },
+      { category: 'TABLE', object_name: 'b', check_name: 'b', expected_result: 'EXISTS', actual_result: 'EXISTS', status: 'PASS', details: 'ok' },
+      { category: 'TABLE', object_name: 'c', check_name: 'c', expected_result: 'EXISTS', actual_result: 'MISSING', status: 'FAIL', details: 'missing' },
+    ]
+
+    expect(summarizeOverall(overallRows)).toEqual({ passCount: 2, failCount: 1, overall: 'FAIL' })
   })
 })

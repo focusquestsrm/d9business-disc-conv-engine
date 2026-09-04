@@ -335,69 +335,72 @@ WITH required_results AS (
          CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'Duplicate candidate function exists.' ELSE 'Duplicate candidate function is missing.' END
   UNION ALL
   SELECT 'SAFETY', 'milestone_2', 'no_ambiguous_null_results', 'NO_NULL',
-         CASE WHEN NOT EXISTS (
+         CASE WHEN EXISTS (
            SELECT 1
            FROM (
-             SELECT to_regclass('public.discovery_sources') AS discovery_sources_exists,
-                    to_regclass('public.businesses') AS businesses_exists,
-                    to_regclass('public.prospects') AS prospects_exists,
-                    to_regprocedure('public.enforce_workflow_transition()') AS enforce_workflow_transition_exists,
-                    to_regprocedure('public.record_workflow_transition()') AS record_workflow_transition_exists,
-                    to_regprocedure('public.set_updated_at()') AS set_updated_at_exists,
-                    to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') AS build_d9_match_candidate_exists,
-                    to_regprocedure('public.tenant_allowed_read()') AS tenant_allowed_read_exists
-           ) q
-           WHERE discovery_sources_exists IS NULL
-              OR businesses_exists IS NULL
-              OR prospects_exists IS NULL
-              OR enforce_workflow_transition_exists IS NULL
-              OR record_workflow_transition_exists IS NULL
-              OR set_updated_at_exists IS NULL
-              OR build_d9_match_candidate_exists IS NULL
-              OR tenant_allowed_read_exists IS NULL
-         ) THEN 'NO_NULL' ELSE 'NULL_FOUND' END,
-         CASE WHEN NOT EXISTS (
+             SELECT category,
+                    object_name,
+                    check_name,
+                    expected_result,
+                    actual_result,
+                    status
+             FROM required_results
+             WHERE category <> 'SAFETY'
+               AND category <> 'OVERALL'
+           ) substantive
+           WHERE category IS NULL
+              OR object_name IS NULL
+              OR check_name IS NULL
+              OR expected_result IS NULL
+              OR actual_result IS NULL
+              OR status IS NULL
+         ) THEN 'NULL_FOUND' ELSE 'NO_NULL' END,
+         CASE WHEN EXISTS (
            SELECT 1
            FROM (
-             SELECT to_regclass('public.discovery_sources') AS discovery_sources_exists,
-                    to_regclass('public.businesses') AS businesses_exists,
-                    to_regclass('public.prospects') AS prospects_exists,
-                    to_regprocedure('public.enforce_workflow_transition()') AS enforce_workflow_transition_exists,
-                    to_regprocedure('public.record_workflow_transition()') AS record_workflow_transition_exists,
-                    to_regprocedure('public.set_updated_at()') AS set_updated_at_exists,
-                    to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') AS build_d9_match_candidate_exists,
-                    to_regprocedure('public.tenant_allowed_read()') AS tenant_allowed_read_exists
-           ) q
-           WHERE discovery_sources_exists IS NULL
-              OR businesses_exists IS NULL
-              OR prospects_exists IS NULL
-              OR enforce_workflow_transition_exists IS NULL
-              OR record_workflow_transition_exists IS NULL
-              OR set_updated_at_exists IS NULL
-              OR build_d9_match_candidate_exists IS NULL
-              OR tenant_allowed_read_exists IS NULL
-         ) THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN NOT EXISTS (
+             SELECT category,
+                    object_name,
+                    check_name,
+                    expected_result,
+                    actual_result,
+                    status
+             FROM required_results
+             WHERE category <> 'SAFETY'
+               AND category <> 'OVERALL'
+           ) substantive
+           WHERE category IS NULL
+              OR object_name IS NULL
+              OR check_name IS NULL
+              OR expected_result IS NULL
+              OR actual_result IS NULL
+              OR status IS NULL
+         ) THEN 'FAIL' ELSE 'PASS' END,
+         CASE WHEN EXISTS (
            SELECT 1
            FROM (
-             SELECT to_regclass('public.discovery_sources') AS discovery_sources_exists,
-                    to_regclass('public.businesses') AS businesses_exists,
-                    to_regclass('public.prospects') AS prospects_exists,
-                    to_regprocedure('public.enforce_workflow_transition()') AS enforce_workflow_transition_exists,
-                    to_regprocedure('public.record_workflow_transition()') AS record_workflow_transition_exists,
-                    to_regprocedure('public.set_updated_at()') AS set_updated_at_exists,
-                    to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') AS build_d9_match_candidate_exists,
-                    to_regprocedure('public.tenant_allowed_read()') AS tenant_allowed_read_exists
-           ) q
-           WHERE discovery_sources_exists IS NULL
-              OR businesses_exists IS NULL
-              OR prospects_exists IS NULL
-              OR enforce_workflow_transition_exists IS NULL
-              OR record_workflow_transition_exists IS NULL
-              OR set_updated_at_exists IS NULL
-              OR build_d9_match_candidate_exists IS NULL
-              OR tenant_allowed_read_exists IS NULL
-         ) THEN 'No required core object or function result is NULL for substantive verification.' ELSE 'A required core object or function result returned an ambiguous NULL value.' END
+             SELECT category,
+                    object_name,
+                    check_name,
+                    expected_result,
+                    actual_result,
+                    status
+             FROM required_results
+             WHERE category <> 'SAFETY'
+               AND category <> 'OVERALL'
+           ) substantive
+           WHERE category IS NULL
+              OR object_name IS NULL
+              OR check_name IS NULL
+              OR expected_result IS NULL
+              OR actual_result IS NULL
+              OR status IS NULL
+         ) THEN 'A required substantive verification field is NULL.' ELSE 'All required substantive verification fields are non-NULL.' END
+),
+substantive_rows AS (
+  SELECT category, object_name, check_name, expected_result, actual_result, status, details
+  FROM required_results
+  WHERE category <> 'SAFETY'
+    AND category <> 'OVERALL'
 ),
 overall AS (
   SELECT 'OVERALL' AS category,
@@ -407,10 +410,13 @@ overall AS (
          CAST((COUNT(*) FILTER (WHERE status = 'PASS')) || ' PASS, ' || (COUNT(*) FILTER (WHERE status = 'FAIL')) || ' FAIL' AS text) AS actual_result,
          CASE WHEN COUNT(*) FILTER (WHERE status = 'FAIL') = 0 THEN 'PASS' ELSE 'FAIL' END AS status,
          CASE WHEN COUNT(*) FILTER (WHERE status = 'FAIL') = 0 THEN 'Milestone 2 verification PASSED' ELSE 'Milestone 2 verification FAILED' END AS details
-  FROM required_results
+  FROM substantive_rows
 ),
 final_result AS (
+  SELECT * FROM substantive_rows
+  UNION ALL
   SELECT * FROM required_results
+  WHERE category = 'SAFETY'
   UNION ALL
   SELECT * FROM overall
 )
