@@ -4,7 +4,7 @@
 -- policies, data, roles, or configuration.
 -- It must return exactly one consolidated PASS/FAIL result set for every required check.
 
-WITH required_results AS (
+WITH substantive_results AS (
   SELECT 'TABLE' AS category, 'public.discovery_sources' AS object_name, 'table_exists' AS check_name,
          'EXISTS' AS expected_result,
          CASE WHEN to_regclass('public.discovery_sources') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END AS actual_result,
@@ -333,93 +333,63 @@ WITH required_results AS (
          CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
          CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'Duplicate candidate function exists.' ELSE 'Duplicate candidate function is missing.' END
-  UNION ALL
-  SELECT 'SAFETY', 'milestone_2', 'no_ambiguous_null_results', 'NO_NULL',
-         CASE WHEN EXISTS (
-           SELECT 1
-           FROM (
-             SELECT category,
-                    object_name,
-                    check_name,
-                    expected_result,
-                    actual_result,
-                    status
-             FROM required_results
-             WHERE category <> 'SAFETY'
-               AND category <> 'OVERALL'
-           ) substantive
-           WHERE category IS NULL
-              OR object_name IS NULL
-              OR check_name IS NULL
-              OR expected_result IS NULL
-              OR actual_result IS NULL
-              OR status IS NULL
-         ) THEN 'NULL_FOUND' ELSE 'NO_NULL' END,
-         CASE WHEN EXISTS (
-           SELECT 1
-           FROM (
-             SELECT category,
-                    object_name,
-                    check_name,
-                    expected_result,
-                    actual_result,
-                    status
-             FROM required_results
-             WHERE category <> 'SAFETY'
-               AND category <> 'OVERALL'
-           ) substantive
-           WHERE category IS NULL
-              OR object_name IS NULL
-              OR check_name IS NULL
-              OR expected_result IS NULL
-              OR actual_result IS NULL
-              OR status IS NULL
-         ) THEN 'FAIL' ELSE 'PASS' END,
-         CASE WHEN EXISTS (
-           SELECT 1
-           FROM (
-             SELECT category,
-                    object_name,
-                    check_name,
-                    expected_result,
-                    actual_result,
-                    status
-             FROM required_results
-             WHERE category <> 'SAFETY'
-               AND category <> 'OVERALL'
-           ) substantive
-           WHERE category IS NULL
-              OR object_name IS NULL
-              OR check_name IS NULL
-              OR expected_result IS NULL
-              OR actual_result IS NULL
-              OR status IS NULL
-         ) THEN 'A required substantive verification field is NULL.' ELSE 'All required substantive verification fields are non-NULL.' END
 ),
-substantive_rows AS (
+safety_result AS (
+  SELECT 'SAFETY' AS category,
+         'milestone_2' AS object_name,
+         'no_ambiguous_null_results' AS check_name,
+         'NO_NULL' AS expected_result,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM substantive_results sr
+           WHERE sr.category IS NULL
+              OR sr.object_name IS NULL
+              OR sr.check_name IS NULL
+              OR sr.expected_result IS NULL
+              OR sr.actual_result IS NULL
+              OR sr.status IS NULL
+         ) THEN 'NULL_FOUND' ELSE 'NO_NULL' END AS actual_result,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM substantive_results sr
+           WHERE sr.category IS NULL
+              OR sr.object_name IS NULL
+              OR sr.check_name IS NULL
+              OR sr.expected_result IS NULL
+              OR sr.actual_result IS NULL
+              OR sr.status IS NULL
+         ) THEN 'FAIL' ELSE 'PASS' END AS status,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM substantive_results sr
+           WHERE sr.category IS NULL
+              OR sr.object_name IS NULL
+              OR sr.check_name IS NULL
+              OR sr.expected_result IS NULL
+              OR sr.actual_result IS NULL
+              OR sr.status IS NULL
+         ) THEN 'A required substantive verification field is NULL.' ELSE 'All required substantive verification fields are non-NULL.' END AS details
+),
+all_results AS (
   SELECT category, object_name, check_name, expected_result, actual_result, status, details
-  FROM required_results
-  WHERE category <> 'SAFETY'
-    AND category <> 'OVERALL'
+  FROM substantive_results
+  UNION ALL
+  SELECT category, object_name, check_name, expected_result, actual_result, status, details
+  FROM safety_result
 ),
-overall AS (
+overall_result AS (
   SELECT 'OVERALL' AS category,
          'milestone_2' AS object_name,
          'milestone_2_verification' AS check_name,
          'All required checks pass' AS expected_result,
-         CAST((COUNT(*) FILTER (WHERE status = 'PASS')) || ' PASS, ' || (COUNT(*) FILTER (WHERE status = 'FAIL')) || ' FAIL' AS text) AS actual_result,
-         CASE WHEN COUNT(*) FILTER (WHERE status = 'FAIL') = 0 THEN 'PASS' ELSE 'FAIL' END AS status,
-         CASE WHEN COUNT(*) FILTER (WHERE status = 'FAIL') = 0 THEN 'Milestone 2 verification PASSED' ELSE 'Milestone 2 verification FAILED' END AS details
-  FROM substantive_rows
-),
-final_result AS (
-  SELECT * FROM substantive_rows
-  UNION ALL
-  SELECT * FROM required_results
-  WHERE category = 'SAFETY'
-  UNION ALL
-  SELECT * FROM overall
+         CAST(COALESCE(COUNT(*) FILTER (WHERE status = 'PASS'), 0) || ' PASS, ' || COALESCE(COUNT(*) FILTER (WHERE status = 'FAIL'), 0) || ' FAIL' AS text) AS actual_result,
+         CASE WHEN COALESCE(COUNT(*) FILTER (WHERE status = 'FAIL'), 0) = 0 THEN 'PASS' ELSE 'FAIL' END AS status,
+         CASE WHEN COALESCE(COUNT(*) FILTER (WHERE status = 'FAIL'), 0) = 0 THEN 'Milestone 2 verification PASSED' ELSE 'Milestone 2 verification FAILED' END AS details
+  FROM all_results
 )
 SELECT category, object_name, check_name, expected_result, actual_result, status, details
-FROM final_result
+FROM all_results
+UNION ALL
+SELECT category, object_name, check_name, expected_result, actual_result, status, details
+FROM overall_result
 ORDER BY CASE WHEN category = 'OVERALL' THEN 1 ELSE 0 END, object_name, check_name;

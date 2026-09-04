@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest'
+import verifierSql from '../../supabase/scripts/verify_milestone_2_rls.sql?raw'
 import { buildD9MatchCandidate, getWorkflowRoute, tenantAllowedRead } from './workflow'
+
+const extractCteSql = (cteName: string) => {
+  const pattern = new RegExp(`\\b${cteName}\\s+AS\\s*\\(`, 'i')
+  const start = verifierSql.search(pattern)
+  if (start === -1) return ''
+
+  let depth = 0
+  let foundStart = false
+  for (let i = start; i < verifierSql.length; i += 1) {
+    const char = verifierSql[i]
+    if (char === '(') {
+      depth += 1
+      foundStart = true
+    } else if (char === ')') {
+      depth -= 1
+      if (foundStart && depth === 0) {
+        return verifierSql.slice(start, i + 1)
+      }
+    }
+  }
+
+  return verifierSql.slice(start)
+}
 
 type VerificationRow = {
   category: string
@@ -118,5 +142,71 @@ describe('milestone 2 workflow security', () => {
     ]
 
     expect(summarizeOverall(overallRows)).toEqual({ passCount: 2, failCount: 1, overall: 'FAIL' })
+  })
+
+  it('keeps the verifier CTE graph acyclic and ordered by dependency', () => {
+    const cteOrder = [
+      'substantive_results',
+      'safety_result',
+      'all_results',
+      'overall_result',
+    ]
+
+    const positions = cteOrder.map((cteName) => ({ cteName, index: verifierSql.search(new RegExp(`\\b${cteName}\\s+AS\\s*\\(`, 'i')) }))
+
+    for (let i = 1; i < positions.length; i += 1) {
+      expect(positions[i].index).toBeGreaterThan(positions[i - 1].index)
+    }
+
+    const substantiveSql = extractCteSql('substantive_results')
+    const safetySql = extractCteSql('safety_result')
+    const allResultsSql = extractCteSql('all_results')
+    const overallSql = extractCteSql('overall_result')
+
+    expect(substantiveSql).not.toMatch(/\bFROM\s+substantive_results\b/i)
+    expect(safetySql).toMatch(/\bFROM\s+substantive_results\b/i)
+    expect(safetySql).not.toMatch(/\bFROM\s+(?:all_results|overall_result)\b/i)
+    expect(allResultsSql).toMatch(/\bFROM\s+substantive_results\b/i)
+    expect(allResultsSql).toMatch(/\bFROM\s+safety_result\b/i)
+    expect(allResultsSql).not.toMatch(/\bFROM\s+overall_result\b/i)
+    expect(overallSql).toMatch(/\bFROM\s+all_results\b/i)
+    expect(overallSql).not.toMatch(/\bFROM\s+(?:substantive_results|safety_result)\b/i)
+    expect(verifierSql).not.toMatch(/\bWITH\s+RECURSIVE\b/i)
+  })
+
+  it('evaluates safety based only on mandatory substantive fields and finalizes overall counts', () => {
+    const safetyPassRows: VerificationRow[] = Array.from({ length: 51 }, () => ({
+      category: 'TABLE',
+      object_name: 'public.discovery_sources',
+      check_name: 'table_exists',
+      expected_result: 'EXISTS',
+      actual_result: 'EXISTS',
+      status: 'PASS',
+      details: 'present',
+    }))
+
+    const safetyFailRows: VerificationRow[] = [
+      {
+        category: 'TABLE',
+        object_name: 'public.discovery_sources',
+        check_name: 'table_exists',
+        expected_result: 'EXISTS',
+        actual_result: null,
+        status: 'PASS',
+        details: 'present',
+      },
+    ]
+
+    expect(evaluateNullSafetyFromRows(safetyPassRows)).toEqual({ actual_result: 'NO_NULL', status: 'PASS' })
+    expect(evaluateNullSafetyFromRows(safetyFailRows)).toEqual({ actual_result: 'NULL_FOUND', status: 'FAIL' })
+
+    const finalizedRows: VerificationRow[] = [
+      { category: 'TABLE', object_name: 'a', check_name: 'a', expected_result: 'EXISTS', actual_result: 'EXISTS', status: 'PASS', details: 'ok' },
+      { category: 'TABLE', object_name: 'b', check_name: 'b', expected_result: 'EXISTS', actual_result: 'EXISTS', status: 'PASS', details: 'ok' },
+      { category: 'TABLE', object_name: 'c', check_name: 'c', expected_result: 'EXISTS', actual_result: 'MISSING', status: 'FAIL', details: 'missing' },
+      { category: 'SAFETY', object_name: 'milestone_2', check_name: 'no_ambiguous_null_results', expected_result: 'NO_NULL', actual_result: 'NO_NULL', status: 'PASS', details: 'all required fields are non-null' },
+    ]
+
+    expect(summarizeOverall(finalizedRows)).toEqual({ passCount: 3, failCount: 1, overall: 'FAIL' })
   })
 })
