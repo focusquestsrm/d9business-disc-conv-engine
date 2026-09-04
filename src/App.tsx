@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import './App.css'
 import { canTransitionCampaign, filterCampaigns, normalizeCampaign, summarizeCampaignMetrics } from './lib/campaign'
 import { classifyD9Status, getWorkflowRoutingLabel, normalizeText, normalizeWebsite } from './lib/discovery'
@@ -1157,43 +1157,79 @@ function VerificationQueuePage() {
 
   const summary = buildVerificationMetrics(items.map((item) => ({ status: item.status })))
 
-  const handleExportWorkbook = () => {
+  const handleExportWorkbook = async () => {
     setExporting(true)
-    const workbook = XLSX.utils.book_new()
-    const columns = buildVerificationExportColumns()
-    const sheetRows = items.map((item) => ({
-      'Batch ID': item.batch_id ?? 'BATCH-N/A',
-      'Verification Case ID': item.case_id,
-      'D9Network Record ID': item.id,
-      'Legal First Name': item.claimant_name.split(' ')[0] ?? '',
-      'Legal Middle Name/Initial': '',
-      'Legal Last Name': item.claimant_name.split(' ').slice(1).join(' ') || '',
-      'Suffix': '',
-      'Preferred Name': '',
-      'Email': '',
-      'Phone': '',
-      'Claimed Organization': item.claimed_organization,
-      'Chapter Name': item.claimed_organization,
-      'Chapter Type': 'fraternity',
-      'Chapter City': '',
-      'Chapter State': '',
-      'College/University': '',
-      'Initiation Year': '',
-      'Initiation Season/Term': '',
-      'Membership/Card Number': '',
-      'Line Name': '',
-      'Line Number': '',
-      'Organization Result': item.result === 'PENDING' ? 'NEEDS_FOLLOW_UP' : item.result,
-      'Organization Reason': item.verification_reason ?? '',
-      'Organization Notes': '',
-      'Verified By': '',
-      'Verification Date': item.created_at,
-    }))
+    try {
+      const workbook = new ExcelJS.Workbook()
+      workbook.creator = 'D9Network'
+      workbook.created = new Date()
+      workbook.modified = new Date()
 
-    const worksheet = XLSX.utils.json_to_sheet(sheetRows, { header: columns })
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Verification')
-    XLSX.writeFile(workbook, `d9-verification-${new Date().toISOString().slice(0, 10)}.xlsx`)
-    setExporting(false)
+      const worksheet = workbook.addWorksheet('Verification Request')
+      worksheet.views = [{ state: 'frozen', ySplit: 1 }]
+      worksheet.autoFilter = { from: 'A1', to: `${String.fromCharCode(65 + buildVerificationExportColumns().length - 1)}1` }
+
+      const columns = buildVerificationExportColumns()
+      worksheet.columns = columns.map((columnName, index) => ({
+        header: columnName,
+        key: `column_${index}`,
+        width: Math.max(16, Math.min(30, columnName.length + 4)),
+      }))
+
+      items.forEach((item) => {
+        worksheet.addRow([
+          item.batch_id ?? 'BATCH-N/A',
+          item.case_id,
+          item.id,
+          item.claimant_name.split(' ')[0] ?? '',
+          '',
+          item.claimant_name.split(' ').slice(1).join(' ') || '',
+          '',
+          '',
+          '',
+          '',
+          item.claimed_organization,
+          item.claimed_organization,
+          'fraternity',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          item.result === 'PENDING' ? 'NEEDS_FOLLOW_UP' : item.result,
+          item.verification_reason ?? '',
+          '',
+          '',
+          item.created_at,
+        ])
+      })
+
+      worksheet.getRow(1).font = { bold: true }
+      worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAF7' } }
+
+      const instructions = workbook.addWorksheet('Instructions')
+      instructions.columns = [{ header: 'Instructions', key: 'instruction', width: 120 }]
+      instructions.addRow(['Verification workbook export for D9 organization review.'])
+      instructions.addRow(['Use the controlled Organization Result values: VERIFIED, UNABLE_TO_VERIFY, REJECTED, NEEDS_FOLLOW_UP.'])
+      instructions.addRow(['Batch ID, Verification Case ID, and D9Network Record ID must remain unchanged.'])
+      instructions.addRow(['Do not include internal-only assignment metadata, personal notes, or confidential audit data.'])
+      instructions.addRow(['Return only the approved verification request sheet and do not evaluate formulas.'])
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `d9-verification-${new Date().toISOString().slice(0, 10)}.xlsx`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const handleWorkbookImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1202,32 +1238,48 @@ function VerificationQueuePage() {
 
     try {
       const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array' })
-      const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      const sheetRows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' })
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.load(buffer)
+      const worksheet = workbook.getWorksheet('Verification Request') ?? workbook.worksheets[0]
+      const rows = worksheet?.getSheetValues() ?? []
+      const headerRowIndex = rows.findIndex((row) => Array.isArray(row) && row.some((value) => value === 'Batch ID'))
+      if (headerRowIndex < 0) {
+        throw new Error('Workbook does not contain the required Batch ID header.')
+      }
 
-      const rows = sheetRows.map((row) => ({
-        batchId: String(row['Batch ID'] ?? ''),
-        verificationCaseId: String(row['Verification Case ID'] ?? ''),
-        recordId: String(row['D9Network Record ID'] ?? ''),
-        legalFirstName: String(row['Legal First Name'] ?? ''),
-        legalLastName: String(row['Legal Last Name'] ?? ''),
-        claimedOrganization: String(row['Claimed Organization'] ?? ''),
-        organizationResult: String(row['Organization Result'] ?? ''),
-        organizationReason: String(row['Organization Reason'] ?? ''),
-      }))
+      const headerRow = rows[headerRowIndex] as unknown as Array<string | number | null | undefined>
+      const requiredHeaders = buildVerificationExportColumns()
+      const normalizedHeaders = headerRow.map((value) => String(value ?? '').trim())
+      if (normalizedHeaders.length < requiredHeaders.length || !requiredHeaders.every((header, index) => normalizedHeaders[index] === header)) {
+        throw new Error('Workbook headers do not match the approved verification request template.')
+      }
+
+      const dataRows = rows.filter((row) => Array.isArray(row) && row.some((value) => String(value ?? '').trim() !== ''))
+      const payloadRows = dataRows.slice(headerRowIndex + 1).map((row) => {
+        const values = Array.isArray(row) ? row : []
+        return {
+          batchId: String(values[0] ?? '').trim(),
+          verificationCaseId: String(values[1] ?? '').trim(),
+          recordId: String(values[2] ?? '').trim(),
+          legalFirstName: String(values[3] ?? '').trim(),
+          legalLastName: String(values[6] ?? '').trim(),
+          claimedOrganization: String(values[10] ?? '').trim(),
+          organizationResult: String(values[21] ?? '').trim(),
+          organizationReason: String(values[22] ?? '').trim(),
+        }
+      }).filter((row) => row.verificationCaseId || row.batchId || row.recordId || row.claimedOrganization)
 
       const preview = previewVerificationImport(
-        rows,
-        rows[0]?.batchId || 'BATCH-N/A',
-        rows[0]?.claimedOrganization || 'Alpha Phi Alpha',
+        payloadRows,
+        payloadRows[0]?.batchId || 'BATCH-N/A',
+        payloadRows[0]?.claimedOrganization || 'Alpha Phi Alpha',
         new Set(items.map((item) => item.case_id)),
       )
 
-      const acceptedRows = rows.filter((row) => {
+      const acceptedRows = payloadRows.filter((row) => {
         const caseId = row.verificationCaseId?.trim()
-        const validBatch = row.batchId === (rows[0]?.batchId || 'BATCH-N/A')
-        const validOrg = row.claimedOrganization?.trim().toLowerCase() === (rows[0]?.claimedOrganization || 'Alpha Phi Alpha').trim().toLowerCase()
+        const validBatch = row.batchId === (payloadRows[0]?.batchId || 'BATCH-N/A')
+        const validOrg = row.claimedOrganization?.trim().toLowerCase() === (payloadRows[0]?.claimedOrganization || 'Alpha Phi Alpha').trim().toLowerCase()
         const validId = Boolean(caseId) && Boolean(row.recordId?.trim())
         const allowedResult = row.organizationResult ? validateVerificationResult(row.organizationResult) : false
         const reasonRequired = ['UNABLE_TO_VERIFY', 'REJECTED', 'NEEDS_FOLLOW_UP'].includes(row.organizationResult ?? '')

@@ -8,13 +8,19 @@ WITH expected_objects AS (
   UNION ALL
   SELECT 'public.verification_results', true
   UNION ALL
+  SELECT 'public.verification_batch_items', true
+  UNION ALL
+  SELECT 'public.verification_imports', true
+  UNION ALL
+  SELECT 'public.verification_import_rows', true
+  UNION ALL
   SELECT 'public.set_verification_updated_at', true
 ),
 actual_objects AS (
   SELECT table_schema || '.' || table_name AS object_name
   FROM information_schema.tables
   WHERE table_schema = 'public'
-    AND table_name IN ('verification_batches', 'verification_cases', 'verification_results')
+    AND table_name IN ('verification_batches', 'verification_cases', 'verification_results', 'verification_batch_items', 'verification_imports', 'verification_import_rows')
   UNION ALL
   SELECT 'public.set_verification_updated_at'
   FROM information_schema.routines
@@ -45,6 +51,36 @@ policy_status AS (
            WHERE schemaname = 'public'
              AND tablename = 'verification_batches'
              AND policyname LIKE '%Verification batches%'
+         ),
+         'select_insert_update_policy'
+  UNION ALL
+  SELECT 'public.verification_batch_items',
+         EXISTS (
+           SELECT 1
+           FROM pg_policies
+           WHERE schemaname = 'public'
+             AND tablename = 'verification_batch_items'
+             AND policyname LIKE '%Verification batch items%'
+         ),
+         'select_insert_update_policy'
+  UNION ALL
+  SELECT 'public.verification_imports',
+         EXISTS (
+           SELECT 1
+           FROM pg_policies
+           WHERE schemaname = 'public'
+             AND tablename = 'verification_imports'
+             AND policyname LIKE '%Verification imports%'
+         ),
+         'select_insert_update_policy'
+  UNION ALL
+  SELECT 'public.verification_import_rows',
+         EXISTS (
+           SELECT 1
+           FROM pg_policies
+           WHERE schemaname = 'public'
+             AND tablename = 'verification_import_rows'
+             AND policyname LIKE '%Verification import rows%'
          ),
          'select_insert_update_policy'
 ),

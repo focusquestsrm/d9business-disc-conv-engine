@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   buildVerificationExportColumns,
@@ -134,5 +136,17 @@ describe('membership verification logic', () => {
     expect(metrics.rejected).toBe(1)
     expect(metrics.needsFollowUp).toBe(1)
     expect(metrics.unableToVerify).toBe(1)
+  })
+
+  it('includes the full batch and import reconciliation schema expected by Release 3A', () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260905_000001_milestone_3a_membership_verification.sql'), 'utf8')
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3a_membership_verification.sql'), 'utf8')
+
+    expect(migrationSql).toContain('verification_batch_items')
+    expect(migrationSql).toContain('verification_imports')
+    expect(migrationSql).toContain('verification_import_rows')
+    expect(verifierSql).toContain('verification_batch_items')
+    expect(verifierSql).toContain('verification_imports')
+    expect(verifierSql).toContain('verification_import_rows')
   })
 })
