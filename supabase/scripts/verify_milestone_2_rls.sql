@@ -388,8 +388,11 @@ overall_result AS (
   FROM all_results
 )
 SELECT category, object_name, check_name, expected_result, actual_result, status, details
-FROM all_results
-UNION ALL
-SELECT category, object_name, check_name, expected_result, actual_result, status, details
-FROM overall_result
+FROM (
+  SELECT category, object_name, check_name, expected_result, actual_result, status, details
+  FROM all_results
+  UNION ALL
+  SELECT category, object_name, check_name, expected_result, actual_result, status, details
+  FROM overall_result
+) ordered_results
 ORDER BY CASE WHEN category = 'OVERALL' THEN 1 ELSE 0 END, object_name, check_name;
