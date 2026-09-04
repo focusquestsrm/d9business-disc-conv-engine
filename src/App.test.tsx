@@ -12,8 +12,8 @@ import {
   validateQuickCaptureForm,
 } from './lib/quickCapture'
 
-const { mockSupabase } = vi.hoisted(() => ({
-  mockSupabase: {
+vi.mock('./lib/supabaseClient', async () => {
+  const mockSupabase = {
     auth: {
       getSession: vi.fn(),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
@@ -21,14 +21,16 @@ const { mockSupabase } = vi.hoisted(() => ({
       signOut: vi.fn(),
     },
     from: vi.fn(),
-  },
-}))
+  }
 
-vi.mock('./lib/supabaseClient', () => ({
-  supabase: mockSupabase,
-  supabaseStatusMessage: 'Supabase connection configured and ready for authenticated session management.',
-  isSupabaseConfigured: true,
-}))
+  return {
+    supabase: mockSupabase,
+    supabaseStatusMessage: 'Supabase connection configured and ready for authenticated session management.',
+    isSupabaseConfigured: true,
+  }
+})
+
+const getMockSupabase = async () => (await import('./lib/supabaseClient')).supabase as any
 
 describe('workflow engine', () => {
   it('routes reported Greek affiliations to verification and blocks unsafe transitions', () => {
@@ -57,7 +59,10 @@ describe('workflow engine', () => {
 })
 
 describe('quick capture', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    const { supabase } = await import('./lib/supabaseClient')
+    const mockSupabase = supabase as any
+
     mockSupabase.auth.getSession.mockReset()
     mockSupabase.auth.onAuthStateChange.mockReset()
     mockSupabase.auth.signInWithPassword.mockReset()
@@ -116,6 +121,8 @@ describe('quick capture', () => {
   })
 
   it('blocks invalid email, phone, and profile URL values before save', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: { session: { user: { id: 'user-123', email: 'admin@example.com', user_metadata: { full_name: 'Tina Morgan' } } } },
       error: null,
@@ -167,6 +174,8 @@ describe('quick capture', () => {
   })
 
   it('blocks duplicate submission and surfaces the duplicate review message', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: { session: { user: { id: 'user-123', email: 'admin@example.com', user_metadata: { full_name: 'Tina Morgan' } } } },
       error: null,
@@ -225,7 +234,9 @@ describe('quick capture', () => {
 })
 
 describe('App', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockReset()
     mockSupabase.auth.onAuthStateChange.mockReset()
     mockSupabase.auth.signInWithPassword.mockReset()
@@ -238,6 +249,7 @@ describe('App', () => {
   })
 
   it('redirects unauthenticated users to the login page', async () => {
+    const mockSupabase = await getMockSupabase()
     mockSupabase.auth.getSession.mockResolvedValue({ data: { session: null }, error: null })
 
     render(
@@ -252,6 +264,8 @@ describe('App', () => {
   })
 
   it('keeps navigation sections collapsed until the active route expands only its parent section', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -306,6 +320,8 @@ describe('App', () => {
   })
 
   it('supports accordion toggling with visible chevrons and keyboard activation', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -368,6 +384,8 @@ describe('App', () => {
   })
 
   it('keeps the quick-capture route standalone and without the dashboard sidebar for authorized users', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -417,6 +435,8 @@ describe('App', () => {
   })
 
   it('routes the New Prospect CTA to the standalone quick capture flow', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -464,6 +484,8 @@ describe('App', () => {
   })
 
   it('loads the active platform admin role for a signed in user', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -511,6 +533,8 @@ describe('App', () => {
   })
 
   it('renders a quick prospect intake form and prevents duplicate submission', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -601,6 +625,8 @@ describe('App', () => {
   })
 
   it('shows the empty canonical business state when no businesses exist', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -668,6 +694,8 @@ describe('App', () => {
   })
 
   it('validates uploaded CSV rows before import commit', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
@@ -726,6 +754,8 @@ describe('App', () => {
   })
 
   it('supports nomination submission and review actions', async () => {
+    const mockSupabase = await getMockSupabase()
+
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
         session: {
