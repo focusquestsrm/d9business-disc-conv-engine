@@ -41,4 +41,13 @@ The app continues to rely on the Milestone 1 role model:
 - privilege-escalation prevention tests validated through live DB role contexts
 - real browser-level authorization checks using the production role model
 
-The repository includes a verification script at supabase/scripts/verify_milestone_2_rls.sql and a mirror at supabase/verification/verify_milestone_2_rls.sql, but neither claims live execution has occurred locally.
+The canonical read-only verifier is at C:\Users\danie\d9business-disc-conv-engine\supabase\scripts\verify_milestone_2_rls.sql.
+
+This script is intentionally read-only. It checks table existence, function existence, required object counts, RLS enablement, policy presence, key/index presence, Quick Capture dependency presence, and the required workflow/duplicate-management functions, then returns a consolidated PASS/FAIL result set with an OVERALL row.
+
+How to interpret the result set:
+- each row includes category, object_name, check_name, expected_result, actual_result, status, and details
+- status values are only PASS or FAIL
+- the OVERALL row must be PASS before Netlify acceptance begins
+- a FAIL row for any required object means the live target project is not yet ready for the next acceptance gate
+- schema verification does not replace live role-based browser testing against the real Supabase project
