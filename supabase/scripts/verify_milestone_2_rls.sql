@@ -76,30 +76,30 @@ WITH required_results AS (
          CASE WHEN to_regclass('public.integration_statuses') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regclass('public.integration_statuses') IS NOT NULL THEN 'public.integration_statuses exists.' ELSE 'public.integration_statuses is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.set_updated_at', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.set_updated_at') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.set_updated_at') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.set_updated_at') IS NOT NULL THEN 'public.set_updated_at exists.' ELSE 'public.set_updated_at is missing.' END
+  SELECT 'FUNCTION', 'public.set_updated_at()', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.set_updated_at()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.set_updated_at()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.set_updated_at()') IS NOT NULL THEN 'public.set_updated_at() exists.' ELSE 'public.set_updated_at() is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.enforce_workflow_transition', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.enforce_workflow_transition') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.enforce_workflow_transition') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.enforce_workflow_transition') IS NOT NULL THEN 'public.enforce_workflow_transition exists.' ELSE 'public.enforce_workflow_transition is missing.' END
+  SELECT 'FUNCTION', 'public.enforce_workflow_transition()', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.enforce_workflow_transition()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.enforce_workflow_transition()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.enforce_workflow_transition()') IS NOT NULL THEN 'public.enforce_workflow_transition() exists.' ELSE 'public.enforce_workflow_transition() is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.record_workflow_transition', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.record_workflow_transition') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.record_workflow_transition') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.record_workflow_transition') IS NOT NULL THEN 'public.record_workflow_transition exists.' ELSE 'public.record_workflow_transition is missing.' END
+  SELECT 'FUNCTION', 'public.record_workflow_transition()', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.record_workflow_transition()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.record_workflow_transition()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.record_workflow_transition()') IS NOT NULL THEN 'public.record_workflow_transition() exists.' ELSE 'public.record_workflow_transition() is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.build_d9_match_candidate', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.build_d9_match_candidate') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.build_d9_match_candidate') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.build_d9_match_candidate') IS NOT NULL THEN 'public.build_d9_match_candidate exists.' ELSE 'public.build_d9_match_candidate is missing.' END
+  SELECT 'FUNCTION', 'public.build_d9_match_candidate(text,uuid,text)', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'public.build_d9_match_candidate(text,uuid,text) exists.' ELSE 'public.build_d9_match_candidate(text,uuid,text) is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.tenant_allowed_read', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.tenant_allowed_read') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.tenant_allowed_read') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.tenant_allowed_read') IS NOT NULL THEN 'public.tenant_allowed_read exists.' ELSE 'public.tenant_allowed_read is missing.' END
+  SELECT 'FUNCTION', 'public.tenant_allowed_read()', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.tenant_allowed_read()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.tenant_allowed_read()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.tenant_allowed_read()') IS NOT NULL THEN 'public.tenant_allowed_read() exists.' ELSE 'public.tenant_allowed_read() is missing.' END
   UNION ALL
   SELECT 'TABLE', 'milestone_2', 'core_object_count', '14',
          CAST((SELECT COUNT(*) FROM (
@@ -319,20 +319,20 @@ WITH required_results AS (
          CASE WHEN to_regclass('public.roles') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regclass('public.roles') IS NOT NULL THEN 'public.roles is available for Quick Capture.' ELSE 'public.roles is missing for Quick Capture.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.enforce_workflow_transition', 'workflow_function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.enforce_workflow_transition') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.enforce_workflow_transition') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.enforce_workflow_transition') IS NOT NULL THEN 'Workflow transition enforcement function exists.' ELSE 'Workflow transition enforcement function is missing.' END
+  SELECT 'FUNCTION', 'public.enforce_workflow_transition()', 'workflow_function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.enforce_workflow_transition()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.enforce_workflow_transition()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.enforce_workflow_transition()') IS NOT NULL THEN 'Workflow transition enforcement function exists.' ELSE 'Workflow transition enforcement function is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.record_workflow_transition', 'workflow_function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.record_workflow_transition') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.record_workflow_transition') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.record_workflow_transition') IS NOT NULL THEN 'Workflow audit function exists.' ELSE 'Workflow audit function is missing.' END
+  SELECT 'FUNCTION', 'public.record_workflow_transition()', 'workflow_function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.record_workflow_transition()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.record_workflow_transition()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.record_workflow_transition()') IS NOT NULL THEN 'Workflow audit function exists.' ELSE 'Workflow audit function is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.build_d9_match_candidate', 'duplicate_management_function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.build_d9_match_candidate') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.build_d9_match_candidate') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.build_d9_match_candidate') IS NOT NULL THEN 'Duplicate candidate function exists.' ELSE 'Duplicate candidate function is missing.' END
+  SELECT 'FUNCTION', 'public.build_d9_match_candidate(text,uuid,text)', 'duplicate_management_function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') IS NOT NULL THEN 'Duplicate candidate function exists.' ELSE 'Duplicate candidate function is missing.' END
   UNION ALL
   SELECT 'SAFETY', 'milestone_2', 'no_ambiguous_null_results', 'NO_NULL',
          CASE WHEN NOT EXISTS (
