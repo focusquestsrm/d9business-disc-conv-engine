@@ -100,10 +100,10 @@ export function buildVerificationWorkbook(rows: Array<Partial<VerificationWorkbo
   const worksheet = workbook.addWorksheet(VERIFICATION_WORKBOOK_SHEET_NAME)
   worksheet.views = [{ state: 'frozen', ySplit: 1 }]
   worksheet.columns = requiredHeaders.map((headerName, index) => ({
-    header: headerName,
     key: `column_${index}`,
     width: Math.max(16, Math.min(32, headerName.length + 4)),
   }))
+  worksheet.addRow(requiredHeaders)
 
   for (const row of rows) {
     worksheet.addRow([
@@ -176,13 +176,21 @@ export async function parseVerificationWorkbook(
     throw new Error('Workbook does not contain the required Verification Request sheet.')
   }
 
-  const allRows = sheet.getSheetValues()
+  const stripLeadingNulls = (values: unknown[]): unknown[] => {
+    const trimmed = [...values]
+    while (trimmed.length > 0 && (trimmed[0] === null || trimmed[0] === undefined || String(trimmed[0]).trim() === '')) {
+      trimmed.shift()
+    }
+    return trimmed
+  }
+
+  const allRows = sheet.getSheetValues().map((row) => (Array.isArray(row) ? stripLeadingNulls(row) : row))
   const headerRowIndex = allRows.findIndex((row) => Array.isArray(row) && row.some((value) => value === 'Batch ID'))
   if (headerRowIndex < 0) {
     throw new Error('Workbook does not contain the required Batch ID header.')
   }
 
-  const headerRow = allRows[headerRowIndex] as unknown[]
+  const headerRow = stripLeadingNulls((allRows[headerRowIndex] as unknown[]))
   const normalizedHeaders = headerRow.map((value) => String(value ?? '').trim())
   if (normalizedHeaders.length !== requiredHeaders.length || !requiredHeaders.every((headerName, index) => normalizedHeaders[index] === headerName)) {
     throw new Error('Workbook headers do not match the approved verification request template.')
@@ -202,19 +210,14 @@ export async function parseVerificationWorkbook(
       throw new Error(`Workbook exceeds the ${MAX_VERIFICATION_WORKBOOK_ROWS} row limit.`)
     }
 
-    const cellValues = row as unknown[]
-    const cellRow = sheet.getRow(i + 1)
-    let hasFormulaOrHyperlink = false
-    cellRow.eachCell((cell) => {
-      const cellValue = cell.value as unknown
-      const valueRecord = typeof cellValue === 'object' && cellValue !== null ? (cellValue as Record<string, unknown>) : null
-      if (cell.type === ExcelJS.ValueType.Formula || (valueRecord && ('formula' in valueRecord || 'hyperlink' in valueRecord))) {
-        hasFormulaOrHyperlink = true
-      }
-      if (cell.hyperlink) {
-        hasFormulaOrHyperlink = true
-      }
-    })
+    const cellValues = stripLeadingNulls(row as unknown[])
+    const rowValueCheck = (value: unknown): boolean => {
+      if (value === null || value === undefined) return false
+      if (typeof value !== 'object') return false
+      const record = value as Record<string, unknown>
+      return 'formula' in record || 'hyperlink' in record || 'result' in record || 'richText' in record
+    }
+    const hasFormulaOrHyperlink = Array.isArray(row) && row.some((value) => rowValueCheck(value))
     if (hasFormulaOrHyperlink) {
       throw new Error('Workbook contains formulas or hyperlinks and cannot be processed.')
     }
@@ -313,8 +316,14 @@ export function prepareVerificationWorkbookRows(
     const reasonRequired = ['UNABLE_TO_VERIFY', 'REJECTED', 'NEEDS_FOLLOW_UP'].includes(row.organizationResult ?? '')
     const reasonPresent = Boolean((row.organizationReason ?? '').trim())
 
-    if (caseId && (alreadyProcessedCaseIds.has(caseId) || seenInCurrentPreview.has(caseId))) {
+    if (caseId && seenInCurrentPreview.has(caseId)) {
       alreadyProcessedRows += 1
+      rejectedRows.push(row)
+      continue
+    }
+
+    if (caseId && alreadyProcessedCaseIds.has(caseId)) {
+      invalidRows += 1
       rejectedRows.push(row)
       continue
     }

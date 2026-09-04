@@ -1168,6 +1168,34 @@ function VerificationQueuePage() {
     setItems(data as VerificationCase[])
   }
 
+  const handleQueueLifecycleAction = async (item: VerificationCase, action: 'assign_reviewer' | 'transition_status' | 'record_response' | 'manual_result' | 'case_history') => {
+    const reviewerUserId = '00000000-0000-0000-0000-000000000000'
+    try {
+      if (action === 'assign_reviewer') {
+        await verificationRepository.assignReviewer(item.id, reviewerUserId, 'Assigned from the verification queue.')
+      }
+      if (action === 'transition_status') {
+        await verificationRepository.transitionCaseStatus(item.id, 'verified', 'Manual verification completed in the queue.', 'VERIFIED')
+      }
+      if (action === 'record_response') {
+        await verificationRepository.recordResponseReceived(item.id, item.claimed_organization, 'VERIFIED', 'Response recorded from the queue.', 'Recorded by queue review flow.', new Date().toISOString())
+      }
+      if (action === 'manual_result') {
+        await verificationRepository.saveManualResult(item.id, 'VERIFIED', 'Manual queue verification result.', 'Saved by queue staff.', reviewerUserId)
+      }
+      if (action === 'case_history') {
+        const history = await verificationRepository.loadCaseHistory(item.id)
+        setQueueNotice(`Loaded ${Array.isArray(history) ? history.length : 0} history records for ${item.case_id}.`)
+        await refreshCases()
+        return
+      }
+      setQueueNotice(`Queue action ${action} succeeded for ${item.case_id}.`)
+      await refreshCases()
+    } catch (error) {
+      setQueueError(error instanceof Error ? error.message : 'The queue lifecycle action could not be completed.')
+    }
+  }
+
   const handleExportWorkbook = async () => {
     setExporting(true)
     try {
@@ -1357,7 +1385,7 @@ function VerificationQueuePage() {
         <div className="panel table-panel">
           <table className="data-table">
             <thead>
-              <tr><th>Case</th><th>Claimant</th><th>Organization</th><th>Status</th><th>Confidence</th><th>Batch</th></tr>
+              <tr><th>Case</th><th>Claimant</th><th>Organization</th><th>Status</th><th>Confidence</th><th>Batch</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {items.map((item) => (
@@ -1368,6 +1396,15 @@ function VerificationQueuePage() {
                   <td><span className="pill neutral">{item.status}</span></td>
                   <td>{item.confidence_score}%</td>
                   <td>{item.batch_id ?? 'No batch'}</td>
+                  <td>
+                    <div className="header-inline-actions">
+                      <button type="button" className="ghost-button" onClick={() => void handleQueueLifecycleAction(item, 'assign_reviewer')}>Assign</button>
+                      <button type="button" className="ghost-button" onClick={() => void handleQueueLifecycleAction(item, 'transition_status')}>Status</button>
+                      <button type="button" className="ghost-button" onClick={() => void handleQueueLifecycleAction(item, 'record_response')}>Response</button>
+                      <button type="button" className="ghost-button" onClick={() => void handleQueueLifecycleAction(item, 'manual_result')}>Manual</button>
+                      <button type="button" className="ghost-button" onClick={() => void handleQueueLifecycleAction(item, 'case_history')}>History</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1451,7 +1488,7 @@ function VerificationBatchesPage() {
             <thead><tr><th>Batch</th><th>Organization</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
             <tbody>
               {batches.map((batch) => (
-                <tr key={batch.id}><td>{batch.batch_code}</td><td>{batch.organization}</td><td><span className="pill neutral">{batch.status}</span></td><td>{new Date(batch.created_at).toLocaleDateString()}</td><td><div className="header-inline-actions"><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'exported')}>Export</button><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'sent')}>Send</button><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'closed')}>Close</button></div></td></tr>
+                <tr key={batch.id}><td>{batch.batch_code}</td><td>{batch.organization}</td><td><span className="pill neutral">{batch.status}</span></td><td>{new Date(batch.created_at).toLocaleDateString()}</td><td><div className="header-inline-actions"><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'exported')}>Export</button><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'sent')}>Send</button><button type="button" className="ghost-button" onClick={() => void handleBatchLifecycle(batch.id, 'closed')}>Close</button><button type="button" className="ghost-button" onClick={() => void verificationRepository.cancelBatch(batch.id, 'Cancelled from Verification Batches page.')}>Cancel</button></div></td></tr>
               ))}
             </tbody>
           </table>
