@@ -1,4 +1,3 @@
-import ExcelJS from 'exceljs'
 import { describe, expect, it } from 'vitest'
 import {
   MAX_VERIFICATION_WORKBOOK_BYTES,
