@@ -338,36 +338,66 @@ WITH required_results AS (
          CASE WHEN NOT EXISTS (
            SELECT 1
            FROM (
-             SELECT to_regclass('public.discovery_sources') AS x,
-                    to_regclass('public.businesses') AS y,
-                    to_regclass('public.prospects') AS z,
-                    to_regprocedure('public.enforce_workflow_transition') AS a,
-                    to_regprocedure('public.record_workflow_transition') AS b
+             SELECT to_regclass('public.discovery_sources') AS discovery_sources_exists,
+                    to_regclass('public.businesses') AS businesses_exists,
+                    to_regclass('public.prospects') AS prospects_exists,
+                    to_regprocedure('public.enforce_workflow_transition()') AS enforce_workflow_transition_exists,
+                    to_regprocedure('public.record_workflow_transition()') AS record_workflow_transition_exists,
+                    to_regprocedure('public.set_updated_at()') AS set_updated_at_exists,
+                    to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') AS build_d9_match_candidate_exists,
+                    to_regprocedure('public.tenant_allowed_read()') AS tenant_allowed_read_exists
            ) q
-           WHERE x IS NULL OR y IS NULL OR z IS NULL OR a IS NULL OR b IS NULL
+           WHERE discovery_sources_exists IS NULL
+              OR businesses_exists IS NULL
+              OR prospects_exists IS NULL
+              OR enforce_workflow_transition_exists IS NULL
+              OR record_workflow_transition_exists IS NULL
+              OR set_updated_at_exists IS NULL
+              OR build_d9_match_candidate_exists IS NULL
+              OR tenant_allowed_read_exists IS NULL
          ) THEN 'NO_NULL' ELSE 'NULL_FOUND' END,
          CASE WHEN NOT EXISTS (
            SELECT 1
            FROM (
-             SELECT to_regclass('public.discovery_sources') AS x,
-                    to_regclass('public.businesses') AS y,
-                    to_regclass('public.prospects') AS z,
-                    to_regprocedure('public.enforce_workflow_transition') AS a,
-                    to_regprocedure('public.record_workflow_transition') AS b
+             SELECT to_regclass('public.discovery_sources') AS discovery_sources_exists,
+                    to_regclass('public.businesses') AS businesses_exists,
+                    to_regclass('public.prospects') AS prospects_exists,
+                    to_regprocedure('public.enforce_workflow_transition()') AS enforce_workflow_transition_exists,
+                    to_regprocedure('public.record_workflow_transition()') AS record_workflow_transition_exists,
+                    to_regprocedure('public.set_updated_at()') AS set_updated_at_exists,
+                    to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') AS build_d9_match_candidate_exists,
+                    to_regprocedure('public.tenant_allowed_read()') AS tenant_allowed_read_exists
            ) q
-           WHERE x IS NULL OR y IS NULL OR z IS NULL OR a IS NULL OR b IS NULL
+           WHERE discovery_sources_exists IS NULL
+              OR businesses_exists IS NULL
+              OR prospects_exists IS NULL
+              OR enforce_workflow_transition_exists IS NULL
+              OR record_workflow_transition_exists IS NULL
+              OR set_updated_at_exists IS NULL
+              OR build_d9_match_candidate_exists IS NULL
+              OR tenant_allowed_read_exists IS NULL
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN NOT EXISTS (
            SELECT 1
            FROM (
-             SELECT to_regclass('public.discovery_sources') AS x,
-                    to_regclass('public.businesses') AS y,
-                    to_regclass('public.prospects') AS z,
-                    to_regprocedure('public.enforce_workflow_transition') AS a,
-                    to_regprocedure('public.record_workflow_transition') AS b
+             SELECT to_regclass('public.discovery_sources') AS discovery_sources_exists,
+                    to_regclass('public.businesses') AS businesses_exists,
+                    to_regclass('public.prospects') AS prospects_exists,
+                    to_regprocedure('public.enforce_workflow_transition()') AS enforce_workflow_transition_exists,
+                    to_regprocedure('public.record_workflow_transition()') AS record_workflow_transition_exists,
+                    to_regprocedure('public.set_updated_at()') AS set_updated_at_exists,
+                    to_regprocedure('public.build_d9_match_candidate(text,uuid,text)') AS build_d9_match_candidate_exists,
+                    to_regprocedure('public.tenant_allowed_read()') AS tenant_allowed_read_exists
            ) q
-           WHERE x IS NULL OR y IS NULL OR z IS NULL OR a IS NULL OR b IS NULL
-         ) THEN 'No required object returns an ambiguous NULL result.' ELSE 'A required object returned an ambiguous NULL result.' END
+           WHERE discovery_sources_exists IS NULL
+              OR businesses_exists IS NULL
+              OR prospects_exists IS NULL
+              OR enforce_workflow_transition_exists IS NULL
+              OR record_workflow_transition_exists IS NULL
+              OR set_updated_at_exists IS NULL
+              OR build_d9_match_candidate_exists IS NULL
+              OR tenant_allowed_read_exists IS NULL
+         ) THEN 'No required core object or function result is NULL for substantive verification.' ELSE 'A required core object or function result returned an ambiguous NULL value.' END
 ),
 overall AS (
   SELECT 'OVERALL' AS category,
