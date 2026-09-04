@@ -138,15 +138,27 @@ describe('membership verification logic', () => {
     expect(metrics.unableToVerify).toBe(1)
   })
 
-  it('includes the full batch and import reconciliation schema expected by Release 3A', () => {
+  it('includes the full batch, history, and lifecycle reconciliation schema expected by Release 3A', () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260905_000001_milestone_3a_membership_verification.sql'), 'utf8')
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3a_membership_verification.sql'), 'utf8')
 
     expect(migrationSql).toContain('verification_batch_items')
     expect(migrationSql).toContain('verification_imports')
     expect(migrationSql).toContain('verification_import_rows')
+    expect(migrationSql).toContain('verification_case_history')
+    expect(migrationSql).toContain('assign_verification_reviewer')
+    expect(migrationSql).toContain('transition_verification_case_status')
+    expect(migrationSql).toContain('record_verification_response_received')
+    expect(migrationSql).toContain('get_verification_case_history')
+    expect(migrationSql).not.toContain('ON CONFLICT DO NOTHING')
+
     expect(verifierSql).toContain('verification_batch_items')
     expect(verifierSql).toContain('verification_imports')
     expect(verifierSql).toContain('verification_import_rows')
+    expect(verifierSql).toContain('verification_case_history')
+    expect(verifierSql).toContain('assign_verification_reviewer')
+    expect(verifierSql).toContain('transition_verification_case_status')
+    expect(verifierSql).toContain('record_verification_response_received')
+    expect(verifierSql).toContain('OVERALL PASS')
   })
 })
