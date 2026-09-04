@@ -88,6 +88,35 @@ describe('membership verification logic', () => {
     expect(preview.alreadyProcessedRows).toBe(2)
   })
 
+  it('tracks conflicting batch or organization rows during workbook preview', () => {
+    const preview = previewVerificationImport([
+      {
+        batchId: 'B-100',
+        verificationCaseId: 'VC-1',
+        recordId: 'R-1',
+        legalFirstName: 'Janice',
+        legalLastName: 'Smith',
+        claimedOrganization: 'Alpha Phi Alpha',
+        organizationResult: 'VERIFIED',
+        organizationReason: 'Confirmed',
+      },
+      {
+        batchId: 'B-999',
+        verificationCaseId: 'VC-2',
+        recordId: 'R-2',
+        legalFirstName: 'Marcus',
+        legalLastName: 'Brown',
+        claimedOrganization: 'Alpha Phi Alpha',
+        organizationResult: 'VERIFIED',
+        organizationReason: 'Confirmed',
+      },
+    ], 'B-100', 'Alpha Phi Alpha', new Set())
+
+    expect(preview.validRows).toBe(1)
+    expect(preview.conflictingRows).toBe(1)
+    expect(preview.invalidRows).toBe(1)
+  })
+
   it('aggregates dashboard metrics from real persisted verification states', () => {
     const metrics = buildVerificationMetrics([
       { status: 'ready_for_batch' },

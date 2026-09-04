@@ -32,6 +32,7 @@ import {
   canTransitionVerificationStatus,
   previewVerificationImport,
   validateMembershipClaim,
+  validateVerificationResult,
 } from './lib/membershipVerification'
 import { deriveWorkflowStatus, normalizeQuickCapturePayload, validateQuickCaptureForm } from './lib/quickCapture'
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
@@ -1122,6 +1123,16 @@ function VerificationQueuePage() {
   const [exporting, setExporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importPreview, setImportPreview] = useState<{ validRows: number; invalidRows: number; alreadyProcessedRows: number } | null>(null)
+  const [importRows, setImportRows] = useState<Array<{
+    batchId: string
+    verificationCaseId: string
+    recordId: string
+    legalFirstName: string
+    legalLastName: string
+    claimedOrganization: string
+    organizationResult: string
+    organizationReason: string
+  }>>([])
 
   useEffect(() => {
     const loadVerificationCases = async () => {
@@ -1212,30 +1223,48 @@ function VerificationQueuePage() {
         rows[0]?.claimedOrganization || 'Alpha Phi Alpha',
         new Set(items.map((item) => item.case_id)),
       )
+
+      const acceptedRows = rows.filter((row) => {
+        const caseId = row.verificationCaseId?.trim()
+        const validBatch = row.batchId === (rows[0]?.batchId || 'BATCH-N/A')
+        const validOrg = row.claimedOrganization?.trim().toLowerCase() === (rows[0]?.claimedOrganization || 'Alpha Phi Alpha').trim().toLowerCase()
+        const validId = Boolean(caseId) && Boolean(row.recordId?.trim())
+        const allowedResult = row.organizationResult ? validateVerificationResult(row.organizationResult) : false
+        const reasonRequired = ['UNABLE_TO_VERIFY', 'REJECTED', 'NEEDS_FOLLOW_UP'].includes(row.organizationResult ?? '')
+        const reasonPresent = Boolean((row.organizationReason ?? '').trim())
+        const alreadyProcessed = items.some((item) => item.case_id === caseId)
+
+        return validBatch && validOrg && validId && allowedResult && !(reasonRequired && !reasonPresent) && !alreadyProcessed
+      })
+
+      setImportRows(acceptedRows)
       setImportPreview(preview)
       setImportError(preview.invalidRows ? 'Workbook contains invalid or mismatched verification rows. Review the preview before committing.' : null)
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'The workbook could not be parsed.')
       setImportPreview(null)
+      setImportRows([])
     }
   }
 
   const handleCommitImport = async () => {
-    if (!supabase || !importPreview) return
+    if (!supabase || !importRows.length) return
 
     try {
-      const workbookRows = items.map((item) => ({
-        batch_id: item.batch_id ?? 'local-batch',
-        case_id: item.case_id,
-        claimant_name: item.claimant_name,
-        claimed_organization: item.claimed_organization,
-        status: item.status,
-        result: item.result,
-        confidence_score: item.confidence_score,
-        verification_reason: item.verification_reason,
+      const workbookRows = importRows.map((row) => ({
+        case_id: row.verificationCaseId,
+        claimant_name: `${row.legalFirstName} ${row.legalLastName}`.trim() || 'Unknown claimant',
+        claimed_organization: row.claimedOrganization,
+        status: 'response_received',
+        result: row.organizationResult,
+        verification_reason: row.organizationReason || null,
+        confidence_score: 100,
+        batch_id: row.batchId,
+        updated_at: new Date().toISOString(),
       }))
 
       await supabase.from('verification_cases').upsert(workbookRows, { onConflict: 'case_id' })
+      setImportRows([])
       setImportPreview(null)
       setImportError(null)
     } catch (error) {

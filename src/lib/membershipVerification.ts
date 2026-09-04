@@ -186,7 +186,13 @@ export function previewVerificationImport(
       continue
     }
 
-    if (!validBatch || !validOrg || !validId || !allowedResult || (reasonRequired && !reasonPresent)) {
+    if (!validId || !allowedResult || (reasonRequired && !reasonPresent)) {
+      invalidRows += 1
+      continue
+    }
+
+    if (!validBatch || !validOrg) {
+      conflictingRows += 1
       invalidRows += 1
       continue
     }
