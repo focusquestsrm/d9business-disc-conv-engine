@@ -20,11 +20,19 @@ import {
   X,
 } from 'lucide-react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 import './App.css'
 import { canTransitionCampaign, filterCampaigns, normalizeCampaign, summarizeCampaignMetrics } from './lib/campaign'
 import { classifyD9Status, getWorkflowRoutingLabel, normalizeText, normalizeWebsite } from './lib/discovery'
 import { CSV_TEMPLATE_HEADERS, buildImportSummary, createIdempotencyKey, parseCsvRows, requiresConfirmation, validateCsvRow } from './lib/imports'
 import { canProcessNomination, normalizeNomination, screenNominationForDuplicate, validateNominationDecision, validateNominationTransition } from './lib/nomination'
+import {
+  buildVerificationExportColumns,
+  buildVerificationMetrics,
+  canTransitionVerificationStatus,
+  previewVerificationImport,
+  validateMembershipClaim,
+} from './lib/membershipVerification'
 import { deriveWorkflowStatus, normalizeQuickCapturePayload, validateQuickCaptureForm } from './lib/quickCapture'
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
 import { buildWorkQueueSummary, filterWorkItems, normalizeWorkItem } from './lib/workqueue'
@@ -63,7 +71,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Verification',
-    items: [{ label: 'Verification Queue', icon: ShieldCheck, to: '/verification' }, { label: 'Consent Review', icon: Lock, to: '/consent-review', future: true }, { label: 'Duplicate Review', icon: AlertTriangle, to: '/duplicate-review' }],
+    items: [{ label: 'Verification Queue', icon: ShieldCheck, to: '/verification' }, { label: 'Verification Batches', icon: FileText, to: '/verification-batches' }, { label: 'Member Claims', icon: Lock, to: '/member-claims' }, { label: 'Consent Review', icon: Lock, to: '/consent-review', future: true }, { label: 'Duplicate Review', icon: AlertTriangle, to: '/duplicate-review' }],
   },
   {
     label: 'Social Engagement',
@@ -357,6 +365,26 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <VerificationQueuePage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/verification-batches"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <VerificationBatchesPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/member-claims"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <MemberClaimsPage currentUserId={session?.user?.id ?? null} />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -796,6 +824,9 @@ function DashboardPage() {
     overdueWorkItems: 0,
     optOuts: 0,
     duplicates: 0,
+    verificationCases: 0,
+    verificationReadyToBatch: 0,
+    verificationSent: 0,
   })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -805,7 +836,7 @@ function DashboardPage() {
       const client = supabase
       if (!client) {
         setLoadError('Dashboard data is unavailable because Supabase is not configured.')
-        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0, openWorkItems: 0, overdueWorkItems: 0, optOuts: 0, duplicates: 0 })
+        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0, openWorkItems: 0, overdueWorkItems: 0, optOuts: 0, duplicates: 0, verificationCases: 0, verificationReadyToBatch: 0, verificationSent: 0 })
         setLoading(false)
         return
       }
@@ -821,7 +852,7 @@ function DashboardPage() {
       }
 
       try {
-        const [prospects, businesses, campaigns, nominations, queue, duplicates, optOuts] = await Promise.all([
+        const [prospects, businesses, campaigns, nominations, queue, duplicates, optOuts, verificationCases] = await Promise.all([
           countTable('prospects'),
           countTable('businesses'),
           countTable('campaigns'),
@@ -829,7 +860,10 @@ function DashboardPage() {
           countTable('workflow_assignments', (query) => typeof query?.neq === 'function' ? query.neq('status', 'completed') : null),
           countTable('possible_duplicates', (query) => typeof query?.eq === 'function' ? query.eq('review_status', 'pending') : null),
           countTable('opt_outs'),
+          countTable('verification_cases'),
         ])
+
+        const verificationSummary = buildVerificationMetrics((await client.from('verification_cases').select('status').limit(1000).then((result) => result.data ?? [])) as Array<{ status?: string }>)
 
         setStats({
           prospects,
@@ -840,11 +874,14 @@ function DashboardPage() {
           duplicates,
           optOuts,
           overdueWorkItems: 0,
+          verificationCases,
+          verificationReadyToBatch: verificationSummary.readyToBatch,
+          verificationSent: verificationSummary.sentToOrganizations,
         })
         setLoadError(null)
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : 'The dashboard could not load repository data.')
-        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0, openWorkItems: 0, overdueWorkItems: 0, optOuts: 0, duplicates: 0 })
+        setStats({ prospects: 0, businesses: 0, campaigns: 0, nominations: 0, openWorkItems: 0, overdueWorkItems: 0, optOuts: 0, duplicates: 0, verificationCases: 0, verificationReadyToBatch: 0, verificationSent: 0 })
       } finally {
         setLoading(false)
       }
@@ -887,10 +924,17 @@ function DashboardPage() {
           <span className="metric-delta">Active coverage</span>
         </article>
         <article className="metric-card tone-navy">
-          <span className="metric-label">Nominations</span>
-          <strong>{loading ? '—' : stats.nominations}</strong>
-          <span className="metric-delta">Review queue</span>
+          <span className="metric-label">Verification</span>
+          <strong>{loading ? '—' : stats.verificationCases}</strong>
+          <span className="metric-delta">Open cases</span>
         </article>
+      </section>
+
+      <section className="summary-row">
+        <article className="metric-card tone-navy"><span className="metric-label">Ready to batch</span><strong>{loading ? '—' : stats.verificationReadyToBatch}</strong><span className="metric-delta">Queued</span></article>
+        <article className="metric-card tone-orange"><span className="metric-label">Sent to orgs</span><strong>{loading ? '—' : stats.verificationSent}</strong><span className="metric-delta">In process</span></article>
+        <article className="metric-card tone-muted"><span className="metric-label">Nominations</span><strong>{loading ? '—' : stats.nominations}</strong><span className="metric-delta">Review queue</span></article>
+        <article className="metric-card tone-navy"><span className="metric-label">Duplicates</span><strong>{loading ? '—' : stats.duplicates}</strong><span className="metric-delta">Flagged</span></article>
       </section>
 
       <section className="content-grid two-col">
@@ -1060,7 +1104,144 @@ function WorkQueuePage() {
 }
 
 function VerificationQueuePage() {
-  const items: Array<{ company: string; status: string; confidence: string }> = []
+  type VerificationCase = {
+    id: string
+    case_id: string
+    claimant_name: string
+    claimed_organization: string
+    status: string
+    result: string
+    confidence_score: number
+    verification_reason: string | null
+    batch_id: string | null
+    created_at: string
+  }
+
+  const [items, setItems] = useState<VerificationCase[]>([])
+  const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importPreview, setImportPreview] = useState<{ validRows: number; invalidRows: number; alreadyProcessedRows: number } | null>(null)
+
+  useEffect(() => {
+    const loadVerificationCases = async () => {
+      if (!supabase) {
+        setItems([
+          { id: 'fallback-1', case_id: 'VC-1001', claimant_name: 'Aisha Sanders', claimed_organization: 'Alpha Phi Alpha', status: 'ready_for_batch', result: 'PENDING', confidence_score: 91, verification_reason: null, batch_id: 'B-2026-001', created_at: new Date().toISOString() },
+          { id: 'fallback-2', case_id: 'VC-1002', claimant_name: 'Marcus Hall', claimed_organization: 'Kappa Alpha Psi', status: 'sent_to_organization', result: 'PENDING', confidence_score: 87, verification_reason: null, batch_id: 'B-2026-001', created_at: new Date().toISOString() },
+        ])
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase.from('verification_cases').select('*').order('created_at', { ascending: false })
+      if (!error) {
+        setItems((data ?? []) as VerificationCase[])
+      }
+      setLoading(false)
+    }
+
+    void loadVerificationCases()
+  }, [])
+
+  const summary = buildVerificationMetrics(items.map((item) => ({ status: item.status })))
+
+  const handleExportWorkbook = () => {
+    setExporting(true)
+    const workbook = XLSX.utils.book_new()
+    const columns = buildVerificationExportColumns()
+    const sheetRows = items.map((item) => ({
+      'Batch ID': item.batch_id ?? 'BATCH-N/A',
+      'Verification Case ID': item.case_id,
+      'D9Network Record ID': item.id,
+      'Legal First Name': item.claimant_name.split(' ')[0] ?? '',
+      'Legal Middle Name/Initial': '',
+      'Legal Last Name': item.claimant_name.split(' ').slice(1).join(' ') || '',
+      'Suffix': '',
+      'Preferred Name': '',
+      'Email': '',
+      'Phone': '',
+      'Claimed Organization': item.claimed_organization,
+      'Chapter Name': item.claimed_organization,
+      'Chapter Type': 'fraternity',
+      'Chapter City': '',
+      'Chapter State': '',
+      'College/University': '',
+      'Initiation Year': '',
+      'Initiation Season/Term': '',
+      'Membership/Card Number': '',
+      'Line Name': '',
+      'Line Number': '',
+      'Organization Result': item.result === 'PENDING' ? 'NEEDS_FOLLOW_UP' : item.result,
+      'Organization Reason': item.verification_reason ?? '',
+      'Organization Notes': '',
+      'Verified By': '',
+      'Verification Date': item.created_at,
+    }))
+
+    const worksheet = XLSX.utils.json_to_sheet(sheetRows, { header: columns })
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Verification')
+    XLSX.writeFile(workbook, `d9-verification-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    setExporting(false)
+  }
+
+  const handleWorkbookImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: 'array' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      const sheetRows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' })
+
+      const rows = sheetRows.map((row) => ({
+        batchId: String(row['Batch ID'] ?? ''),
+        verificationCaseId: String(row['Verification Case ID'] ?? ''),
+        recordId: String(row['D9Network Record ID'] ?? ''),
+        legalFirstName: String(row['Legal First Name'] ?? ''),
+        legalLastName: String(row['Legal Last Name'] ?? ''),
+        claimedOrganization: String(row['Claimed Organization'] ?? ''),
+        organizationResult: String(row['Organization Result'] ?? ''),
+        organizationReason: String(row['Organization Reason'] ?? ''),
+      }))
+
+      const preview = previewVerificationImport(
+        rows,
+        rows[0]?.batchId || 'BATCH-N/A',
+        rows[0]?.claimedOrganization || 'Alpha Phi Alpha',
+        new Set(items.map((item) => item.case_id)),
+      )
+      setImportPreview(preview)
+      setImportError(preview.invalidRows ? 'Workbook contains invalid or mismatched verification rows. Review the preview before committing.' : null)
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'The workbook could not be parsed.')
+      setImportPreview(null)
+    }
+  }
+
+  const handleCommitImport = async () => {
+    if (!supabase || !importPreview) return
+
+    try {
+      const workbookRows = items.map((item) => ({
+        batch_id: item.batch_id ?? 'local-batch',
+        case_id: item.case_id,
+        claimant_name: item.claimant_name,
+        claimed_organization: item.claimed_organization,
+        status: item.status,
+        result: item.result,
+        confidence_score: item.confidence_score,
+        verification_reason: item.verification_reason,
+      }))
+
+      await supabase.from('verification_cases').upsert(workbookRows, { onConflict: 'case_id' })
+      setImportPreview(null)
+      setImportError(null)
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'The verification workbook could not be committed.')
+    }
+  }
 
   return (
     <div className="page">
@@ -1069,20 +1250,52 @@ function VerificationQueuePage() {
           <p className="eyebrow">Verification</p>
           <h1>Verification Queue</h1>
         </div>
-        <button type="button" className="primary-button">New verification</button>
+        <div className="header-inline-actions">
+          <label className="ghost-button" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+            <input type="file" accept=".xlsx,.xls" hidden onChange={(event) => void handleWorkbookImport(event)} />
+            Import workbook
+          </label>
+          <button type="button" className="primary-button" onClick={handleExportWorkbook} disabled={exporting || loading}>{exporting ? 'Exporting…' : 'Export workbook'}</button>
+        </div>
       </div>
-      {items.length ? (
+
+      <section className="summary-row">
+        <article className="metric-card tone-navy"><span className="metric-label">Ready to batch</span><strong>{summary.readyToBatch}</strong><span className="metric-delta">Queued</span></article>
+        <article className="metric-card tone-orange"><span className="metric-label">Sent to orgs</span><strong>{summary.sentToOrganizations}</strong><span className="metric-delta">In process</span></article>
+        <article className="metric-card tone-muted"><span className="metric-label">Verified</span><strong>{summary.verified}</strong><span className="metric-delta">Completed</span></article>
+        <article className="metric-card tone-navy"><span className="metric-label">Needs follow-up</span><strong>{summary.needsFollowUp}</strong><span className="metric-delta">Review</span></article>
+      </section>
+
+      {importError && <div className="login-alert login-alert-error" role="alert"><strong>Import review</strong><span>{importError}</span></div>}
+      {importPreview && (
+        <div className="panel">
+          <div className="panel-header"><h2>Workbook preview</h2></div>
+          <div className="summary-row">
+            <article className="metric-card tone-navy"><span className="metric-label">Valid rows</span><strong>{importPreview.validRows}</strong><span className="metric-delta">Ready</span></article>
+            <article className="metric-card tone-orange"><span className="metric-label">Invalid rows</span><strong>{importPreview.invalidRows}</strong><span className="metric-delta">Blocked</span></article>
+            <article className="metric-card tone-muted"><span className="metric-label">Already processed</span><strong>{importPreview.alreadyProcessedRows}</strong><span className="metric-delta">Skipped</span></article>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="primary-button" onClick={() => void handleCommitImport()} disabled={!supabase}>Commit import</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (<div className="panel empty-state"><h2>Loading verification cases</h2><p>Restoring the active member verification queue.</p></div>) : items.length ? (
         <div className="panel table-panel">
           <table className="data-table">
             <thead>
-              <tr><th>Company</th><th>Verification status</th><th>Confidence</th></tr>
+              <tr><th>Case</th><th>Claimant</th><th>Organization</th><th>Status</th><th>Confidence</th><th>Batch</th></tr>
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.company}>
-                  <td>{item.company}</td>
+                <tr key={item.id}>
+                  <td>{item.case_id}</td>
+                  <td>{item.claimant_name}</td>
+                  <td>{item.claimed_organization}</td>
                   <td><span className="pill neutral">{item.status}</span></td>
-                  <td>{item.confidence}</td>
+                  <td>{item.confidence_score}%</td>
+                  <td>{item.batch_id ?? 'No batch'}</td>
                 </tr>
               ))}
             </tbody>
@@ -1094,6 +1307,177 @@ function VerificationQueuePage() {
           <p>Verified records and consent checks will appear here when the review pipeline is active.</p>
         </div>
       )}
+    </div>
+  )
+}
+
+function VerificationBatchesPage() {
+  const [batches, setBatches] = useState<Array<{ id: string; batch_code: string; organization: string; status: string; created_at: string }>>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadBatches = async () => {
+      if (!supabase) {
+        setBatches([
+          { id: 'b-1', batch_code: 'B-2026-001', organization: 'Alpha Phi Alpha', status: 'sent_to_organization', created_at: new Date().toISOString() },
+          { id: 'b-2', batch_code: 'B-2026-002', organization: 'Kappa Alpha Psi', status: 'draft', created_at: new Date().toISOString() },
+        ])
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase.from('verification_batches').select('*').order('created_at', { ascending: false })
+      if (!error) {
+        setBatches((data ?? []) as Array<{ id: string; batch_code: string; organization: string; status: string; created_at: string }>)
+      }
+      setLoading(false)
+    }
+
+    void loadBatches()
+  }, [])
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Verification</p>
+          <h1>Verification Batches</h1>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="panel empty-state"><h2>Loading batches</h2><p>Restoring the submission windows and approval queue.</p></div>
+      ) : batches.length ? (
+        <div className="panel table-panel">
+          <table className="data-table">
+            <thead><tr><th>Batch</th><th>Organization</th><th>Status</th><th>Created</th></tr></thead>
+            <tbody>
+              {batches.map((batch) => (
+                <tr key={batch.id}><td>{batch.batch_code}</td><td>{batch.organization}</td><td><span className="pill neutral">{batch.status}</span></td><td>{new Date(batch.created_at).toLocaleDateString()}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="panel empty-state"><h2>No verification batches</h2><p>Once the review team builds a batch, it will appear here for export and monitoring.</p></div>
+      )}
+    </div>
+  )
+}
+
+function MemberClaimsPage({ currentUserId }: { currentUserId: string | null }) {
+  const initialForm = {
+    legalFirstName: '',
+    legalLastName: '',
+    claimedOrganization: '',
+    email: '',
+    phone: '',
+    chapterName: '',
+    chapterCity: '',
+    chapterState: '',
+    consentAcknowledged: false,
+    consentDate: new Date().toISOString().slice(0, 10),
+  }
+
+  const [form, setForm] = useState(initialForm)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const nextErrors = validateMembershipClaim(form)
+    setErrors(Object.fromEntries(Object.entries(nextErrors).filter(([, value]) => Boolean(value))))
+
+    if (Object.keys(nextErrors).length) {
+      setStatus('Please complete the required identity and consent fields before submitting the claim.')
+      return
+    }
+
+    setSaving(true)
+    setStatus(null)
+
+    const transitionAllowed = canTransitionVerificationStatus('not_requested', 'ready_for_batch', { authorized: true })
+    if (!transitionAllowed) {
+      setStatus('The verification lifecycle currently blocks this claim from being moved into the batch queue.')
+      setSaving(false)
+      return
+    }
+
+    const statusValue = 'ready_for_batch' as const
+    const payload = {
+      case_id: `VC-${Date.now()}`,
+      claimant_name: `${form.legalFirstName} ${form.legalLastName}`.trim(),
+      legal_first_name: form.legalFirstName,
+      legal_last_name: form.legalLastName,
+      email: form.email || null,
+      phone: form.phone || null,
+      claimed_organization: form.claimedOrganization,
+      chapter_name: form.chapterName || null,
+      chapter_city: form.chapterCity || null,
+      chapter_state: form.chapterState || null,
+      consent_acknowledged: form.consentAcknowledged,
+      consent_date: form.consentDate || null,
+      status: statusValue,
+      result: 'PENDING',
+      confidence_score: 76,
+      batch_id: 'B-LOCAL-MANUAL',
+      created_by: currentUserId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    if (supabase) {
+      const { error } = await supabase.from('verification_cases').insert(payload)
+      if (error) {
+        setStatus(error.message || 'The membership claim could not be saved.')
+        setSaving(false)
+        return
+      }
+    }
+
+    setStatus('Membership claim submitted and routed for verification batching.')
+    setForm(initialForm)
+    setSaving(false)
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Verification</p>
+          <h1>Member Claims</h1>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Submit a membership claim</h2></div>
+        <form className="stack-form" onSubmit={handleSubmit}>
+          <div className="form-grid two-col">
+            <label className="field"><span>Legal first name</span><input value={form.legalFirstName} onChange={(event) => setForm((current) => ({ ...current, legalFirstName: event.target.value }))} />{errors.legalFirstName && <small className="field-error">{errors.legalFirstName}</small>}</label>
+            <label className="field"><span>Legal last name</span><input value={form.legalLastName} onChange={(event) => setForm((current) => ({ ...current, legalLastName: event.target.value }))} />{errors.legalLastName && <small className="field-error">{errors.legalLastName}</small>}</label>
+            <label className="field"><span>Claimed organization</span><input value={form.claimedOrganization} onChange={(event) => setForm((current) => ({ ...current, claimedOrganization: event.target.value }))} />{errors.claimedOrganization && <small className="field-error">{errors.claimedOrganization}</small>}</label>
+            <label className="field"><span>Email</span><input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></label>
+            <label className="field"><span>Phone</span><input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} /></label>
+            <label className="field"><span>Chapter name</span><input value={form.chapterName} onChange={(event) => setForm((current) => ({ ...current, chapterName: event.target.value }))} /></label>
+            <label className="field"><span>Chapter city</span><input value={form.chapterCity} onChange={(event) => setForm((current) => ({ ...current, chapterCity: event.target.value }))} /></label>
+            <label className="field"><span>Chapter state</span><input value={form.chapterState} onChange={(event) => setForm((current) => ({ ...current, chapterState: event.target.value }))} /></label>
+            <label className="field"><span>Consent date</span><input type="date" value={form.consentDate} onChange={(event) => setForm((current) => ({ ...current, consentDate: event.target.value }))} />{errors.consentDate && <small className="field-error">{errors.consentDate}</small>}</label>
+          </div>
+
+          <label className="field checkbox-row">
+            <input type="checkbox" checked={form.consentAcknowledged} onChange={(event) => setForm((current) => ({ ...current, consentAcknowledged: event.target.checked }))} />
+            <span>I acknowledge consent and authorize verification.</span>
+          </label>
+          {errors.consentAcknowledged && <small className="field-error">{errors.consentAcknowledged}</small>}
+
+          {status && <div className="login-alert" role="alert"><strong>Claim status</strong><span>{status}</span></div>}
+
+          <div className="form-actions">
+            <button type="submit" className="primary-button" disabled={saving}>{saving ? 'Submitting...' : 'Submit claim'}</button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
