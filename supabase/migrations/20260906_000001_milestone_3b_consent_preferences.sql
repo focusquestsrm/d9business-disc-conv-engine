@@ -26,11 +26,13 @@ CREATE TABLE IF NOT EXISTS public.consent_preferences (
 CREATE INDEX IF NOT EXISTS idx_consent_preferences_subject
   ON public.consent_preferences (subject_type, subject_id, channel, purpose, status, effective_at);
 
+CREATE INDEX IF NOT EXISTS idx_consent_preferences_expires_at
+  ON public.consent_preferences (expires_at);
+
 CREATE UNIQUE INDEX IF NOT EXISTS ux_consent_preferences_active
   ON public.consent_preferences (subject_type, subject_id, channel, purpose)
   WHERE status = 'granted'
-    AND (withdrawn_at IS NULL OR withdrawn_at > now())
-    AND (expires_at IS NULL OR expires_at > now());
+    AND withdrawn_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.verification_sharing_consents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -144,26 +146,32 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS consent_preferences_set_updated_at ON public.consent_preferences;
 CREATE TRIGGER consent_preferences_set_updated_at
 BEFORE UPDATE ON public.consent_preferences
 FOR EACH ROW EXECUTE FUNCTION public.set_consent_updated_at();
 
+DROP TRIGGER IF EXISTS verification_sharing_consents_set_updated_at ON public.verification_sharing_consents;
 CREATE TRIGGER verification_sharing_consents_set_updated_at
 BEFORE UPDATE ON public.verification_sharing_consents
 FOR EACH ROW EXECUTE FUNCTION public.set_consent_updated_at();
 
+DROP TRIGGER IF EXISTS retention_policies_set_updated_at ON public.retention_policies;
 CREATE TRIGGER retention_policies_set_updated_at
 BEFORE UPDATE ON public.retention_policies
 FOR EACH ROW EXECUTE FUNCTION public.set_consent_updated_at();
 
+DROP TRIGGER IF EXISTS deletion_requests_set_updated_at ON public.deletion_requests;
 CREATE TRIGGER deletion_requests_set_updated_at
 BEFORE UPDATE ON public.deletion_requests
 FOR EACH ROW EXECUTE FUNCTION public.set_consent_updated_at();
 
+DROP TRIGGER IF EXISTS consent_history_block_update ON public.consent_history;
 CREATE TRIGGER consent_history_block_update
 BEFORE UPDATE ON public.consent_history
 FOR EACH ROW EXECUTE FUNCTION public.prevent_consent_history_mutation();
 
+DROP TRIGGER IF EXISTS consent_history_block_delete ON public.consent_history;
 CREATE TRIGGER consent_history_block_delete
 BEFORE DELETE ON public.consent_history
 FOR EACH ROW EXECUTE FUNCTION public.prevent_consent_history_mutation();
@@ -839,39 +847,47 @@ ALTER TABLE public.consent_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.retention_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.deletion_requests ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can manage their consent" ON public.consent_preferences;
 CREATE POLICY "Authenticated users can manage their consent" ON public.consent_preferences
   FOR ALL
   USING (auth.uid() IS NOT NULL)
   WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Authenticated users can manage verification sharing consent" ON public.verification_sharing_consents;
 CREATE POLICY "Authenticated users can manage verification sharing consent" ON public.verification_sharing_consents
   FOR ALL
   USING (auth.uid() IS NOT NULL)
   WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Authorized users can read consent history" ON public.consent_history;
 CREATE POLICY "Authorized users can read consent history" ON public.consent_history
   FOR SELECT
   USING (auth.uid() IS NOT NULL AND (public.current_user_is_platform_admin() OR public.user_has_permission('view_platform') OR public.user_has_permission('view_operational_modules')));
 
+DROP POLICY IF EXISTS "Platform admins manage retention policies" ON public.retention_policies;
 CREATE POLICY "Platform admins manage retention policies" ON public.retention_policies
   FOR ALL
   USING (public.current_user_is_platform_admin())
   WITH CHECK (public.current_user_is_platform_admin());
 
+DROP POLICY IF EXISTS "Platform admins manage deletion requests" ON public.deletion_requests;
 CREATE POLICY "Platform admins manage deletion requests" ON public.deletion_requests
   FOR ALL
   USING (public.current_user_is_platform_admin() OR public.user_has_permission('manage_privacy'))
   WITH CHECK (public.current_user_is_platform_admin() OR public.user_has_permission('manage_privacy'));
 
+DROP POLICY IF EXISTS "Authenticated users can read active opt-out suppression evidence" ON public.opt_outs;
 CREATE POLICY "Authenticated users can read active opt-out suppression evidence" ON public.opt_outs
   FOR SELECT
   USING (auth.uid() IS NOT NULL)
   WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Authenticated users can manage opt_outs" ON public.opt_outs;
 CREATE POLICY "Authenticated users can manage opt_outs" ON public.opt_outs
   FOR INSERT
   WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Authenticated users can update opt_outs" ON public.opt_outs;
 CREATE POLICY "Authenticated users can update opt_outs" ON public.opt_outs
   FOR UPDATE
   USING (auth.uid() IS NOT NULL)

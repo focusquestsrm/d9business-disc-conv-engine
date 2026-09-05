@@ -35,6 +35,11 @@ WITH substantive_results AS (
          CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'consent_preferences' AND column_name = 'status') THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'consent_preferences' AND column_name = 'status') THEN 'Consent status is constrained to supported values.' ELSE 'Consent status is missing.' END
   UNION ALL
+  SELECT 'INDEX', 'public.consent_preferences', 'expiration_index_exists', 'PRESENT',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'consent_preferences' AND indexname = 'idx_consent_preferences_expires_at') THEN 'PRESENT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'consent_preferences' AND indexname = 'idx_consent_preferences_expires_at') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'consent_preferences' AND indexname = 'idx_consent_preferences_expires_at') THEN 'Expiration lookup index exists for active consent evaluation.' ELSE 'Expiration lookup index is missing.' END
+  UNION ALL
   SELECT 'UNIQUE', 'public.consent_preferences', 'unique_active_channel_consent', 'unique_active_record_limit',
          CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'consent_preferences' AND indexname = 'ux_consent_preferences_active') THEN 'PRESENT' ELSE 'MISSING' END,
          CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'consent_preferences' AND indexname = 'ux_consent_preferences_active') THEN 'PASS' ELSE 'FAIL' END,
