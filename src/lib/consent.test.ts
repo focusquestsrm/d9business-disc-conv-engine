@@ -161,6 +161,15 @@ describe('consent governance', () => {
     expect(migrationSql).toContain('ALTER TABLE public.retention_policies ENABLE ROW LEVEL SECURITY;')
   })
 
+  it('requires correct PostgreSQL catalog columns for policy checks', () => {
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3b_consent_preferences.sql'), 'utf8')
+
+    expect(verifierSql).not.toMatch(/cmdname/i)
+    expect(verifierSql).toMatch(/FROM\s+pg_policies\s+WHERE\s+schemaname\s*=\s*'public'\s+AND\s+tablename\s*=\s*'consent_history'\s+AND\s+cmd\s*=\s*'SELECT'/i)
+    expect(verifierSql).toMatch(/FROM\s+pg_policies\s+WHERE\s+schemaname\s*=\s*'public'\s+AND\s+tablename\s*=\s*'opt_outs'\s+AND\s+cmd\s*=\s*'INSERT'/i)
+    expect(verifierSql).toMatch(/FROM\s+pg_policies\s+WHERE\s+schemaname\s*=\s*'public'\s+AND\s+tablename\s*=\s*'opt_outs'\s+AND\s+cmd\s*=\s*'UPDATE'/i)
+  })
+
   it('parses the release 3B migration and verifier SQL without syntax issues', async () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260906_000001_milestone_3b_consent_preferences.sql'), 'utf8')
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3b_consent_preferences.sql'), 'utf8')
