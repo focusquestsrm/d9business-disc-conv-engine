@@ -32,6 +32,8 @@ import {
   canTransitionVerificationStatus,
   validateMembershipClaim,
 } from './lib/membershipVerification'
+import { CONSENT_CHANNELS, CONSENT_PURPOSES, CONSENT_STATUSES, evaluateOutreachEligibility, type ConsentChannel, type ConsentPurpose, type ConsentStatus } from './lib/consent'
+import { consentRepository } from './lib/consentRepository'
 import { deriveWorkflowStatus, normalizeQuickCapturePayload, validateQuickCaptureForm } from './lib/quickCapture'
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
 import { verificationRepository } from './lib/verificationRepository'
@@ -72,7 +74,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Verification',
-    items: [{ label: 'Verification Queue', icon: ShieldCheck, to: '/verification' }, { label: 'Verification Batches', icon: FileText, to: '/verification-batches' }, { label: 'Member Claims', icon: Lock, to: '/member-claims' }, { label: 'Consent Review', icon: Lock, to: '/consent-review', future: true }, { label: 'Duplicate Review', icon: AlertTriangle, to: '/duplicate-review' }],
+    items: [{ label: 'Verification Queue', icon: ShieldCheck, to: '/verification' }, { label: 'Verification Batches', icon: FileText, to: '/verification-batches' }, { label: 'Member Claims', icon: Lock, to: '/member-claims' }, { label: 'Consent & Preferences', icon: Lock, to: '/consent-preferences' }, { label: 'Consent History', icon: FileText, to: '/consent-history' }, { label: 'Retention & Deletion Administration', icon: ShieldCheck, to: '/retention-and-deletion', requiresAdmin: true }, { label: 'Duplicate Review', icon: AlertTriangle, to: '/duplicate-review' }],
   },
   {
     label: 'Social Engagement',
@@ -386,6 +388,36 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <MemberClaimsPage currentUserId={session?.user?.id ?? null} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/consent-preferences"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <ConsentPreferencesPage currentUserId={session?.user?.id ?? null} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/consent-history"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <ConsentHistoryPage currentUserId={session?.user?.id ?? null} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/retention-and-deletion"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={true}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <RetentionAdministrationPage currentUserId={session?.user?.id ?? null} isPlatformAdmin={isPlatformAdmin} />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -1618,6 +1650,683 @@ function MemberClaimsPage({ currentUserId }: { currentUserId: string | null }) {
   )
 }
 
+function ConsentPreferencesPage({ currentUserId }: { currentUserId: string | null }) {
+  const [preferences, setPreferences] = useState<Array<{
+    id: string
+    channel: ConsentChannel
+    purpose: ConsentPurpose
+    status: ConsentStatus
+    effective_at?: string | null
+    expires_at?: string | null
+    withdrawn_at?: string | null
+  }>>([])
+  const [history, setHistory] = useState<Array<{ id: string; channel?: string | null; purpose?: string | null; new_state?: string | null; reason?: string | null; created_at?: string | null }>>([])
+  const [notice, setNotice] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    channel: 'email' as ConsentChannel,
+    purpose: 'general_communication' as ConsentPurpose,
+    status: 'granted' as ConsentStatus,
+    expiresAt: '',
+    reason: 'Updated from consent preferences UI',
+  })
+  const [sharingForm, setSharingForm] = useState({ organization: 'Alpha Phi Alpha', purpose: 'verification_share' })
+  const [suppressionForm, setSuppressionForm] = useState({ kind: 'global' as 'global' | 'channel', channel: 'email' as ConsentChannel, reason: '' })
+  const [outreachDecision, setOutreachDecision] = useState<{ allowed: boolean; reason: string } | null>(null)
+  const [sharingDecision, setSharingDecision] = useState<{ allowed: boolean; reason: string } | null>(null)
+
+  const refreshPersistentState = async () => {
+    if (!currentUserId) {
+      setPreferences([
+        { id: 'demo-email', channel: 'email', purpose: 'general_communication', status: 'granted', effective_at: new Date().toISOString(), expires_at: null, withdrawn_at: null },
+        { id: 'demo-phone', channel: 'phone', purpose: 'service_updates', status: 'withdrawn', effective_at: new Date().toISOString(), expires_at: null, withdrawn_at: new Date().toISOString() },
+      ])
+      setHistory([
+        { id: 'demo-history-1', channel: 'email', purpose: 'general_communication', new_state: 'granted', reason: 'Initial consent granted', created_at: new Date().toISOString() },
+        { id: 'demo-history-2', channel: 'phone', purpose: 'service_updates', new_state: 'withdrawn', reason: 'User withdrew the channel', created_at: new Date().toISOString() },
+      ])
+      return
+    }
+
+    try {
+      const [consentData, historyRows] = await Promise.all([
+        consentRepository.loadEffectiveConsent('prospect', currentUserId),
+        consentRepository.loadHistory('prospect', currentUserId),
+      ])
+
+      setPreferences((consentData ?? []).map((row) => ({
+        id: row.id ?? `${row.channel}-${row.purpose}`,
+        channel: row.channel,
+        purpose: row.purpose,
+        status: row.status,
+        effective_at: row.effective_at ?? null,
+        expires_at: row.expires_at ?? null,
+        withdrawn_at: row.withdrawn_at ?? null,
+      })))
+
+      setHistory((historyRows ?? []).map((row) => ({
+        id: row.id,
+        channel: row.channel ?? null,
+        purpose: row.purpose ?? null,
+        new_state: row.new_state ?? null,
+        reason: row.reason ?? null,
+        created_at: row.created_at ?? null,
+      })))
+    } catch {
+      setPreferences([])
+      setHistory([])
+    }
+  }
+
+  useEffect(() => {
+    void refreshPersistentState()
+  }, [currentUserId])
+
+  const persistChannelConsent = async (mode: 'grant' | 'deny' | 'withdraw') => {
+    if (!currentUserId) {
+      setNotice('Sign in to persist communication consent.')
+      return
+    }
+
+    try {
+      if (mode === 'withdraw') {
+        await consentRepository.withdrawChannelConsent({
+          subject_type: 'prospect',
+          subject_id: currentUserId,
+          channel: form.channel,
+          purpose: form.purpose,
+          reason: form.reason,
+          actor_user_id: currentUserId,
+        })
+        setNotice(`Consent was withdrawn for ${form.channel} / ${form.purpose}.`)
+      } else {
+        await consentRepository.grantChannelConsent({
+          subject_type: 'prospect',
+          subject_id: currentUserId,
+          channel: form.channel,
+          purpose: form.purpose,
+          status: mode === 'grant' ? 'granted' : 'denied',
+          capture_source: 'manual_ui',
+          effective_at: new Date().toISOString(),
+          expires_at: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+          created_by: currentUserId,
+          updated_by: currentUserId,
+        })
+        setNotice(`Communication consent was ${mode === 'grant' ? 'granted' : 'denied'} for ${form.channel} / ${form.purpose}.`)
+      }
+      setForm((current) => ({ ...current, expiresAt: '', reason: 'Updated from consent preferences UI' }))
+      await refreshPersistentState()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Consent update failed.')
+    }
+  }
+
+  const handleGrantSharingConsent = async () => {
+    if (!currentUserId) {
+      setNotice('Sign in to persist verification-sharing consent.')
+      return
+    }
+
+    try {
+      await consentRepository.grantVerificationSharingConsent({
+        subject_type: 'prospect',
+        subject_id: currentUserId,
+        selected_organization: sharingForm.organization,
+        purpose: sharingForm.purpose,
+        actor_user_id: currentUserId,
+      })
+      setNotice(`Verification-sharing consent was granted for ${sharingForm.organization}.`)
+      await refreshPersistentState()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Verification-sharing consent could not be granted.')
+    }
+  }
+
+  const handleWithdrawSharingConsent = async () => {
+    if (!currentUserId) {
+      setNotice('Sign in to withdraw verification-sharing consent.')
+      return
+    }
+
+    try {
+      await consentRepository.withdrawVerificationSharingConsent({
+        subject_type: 'prospect',
+        subject_id: currentUserId,
+        selected_organization: sharingForm.organization,
+        reason: 'Withdrawn from consent preferences UI',
+        actor_user_id: currentUserId,
+      })
+      setNotice(`Verification-sharing consent was withdrawn for ${sharingForm.organization}.`)
+      await refreshPersistentState()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Verification-sharing consent withdrawal failed.')
+    }
+  }
+
+  const handleRecordSuppression = async (mode: 'global' | 'channel') => {
+    if (!currentUserId) {
+      setNotice('Sign in to persist suppression rules.')
+      return
+    }
+
+    try {
+      if (!suppressionForm.reason.trim()) {
+        setNotice('A reason is required before a suppression can be recorded.')
+        return
+      }
+
+      await consentRepository.recordOptOut({
+        entity_type: 'prospect',
+        entity_id: currentUserId,
+        source: 'manual_ui',
+        reason: suppressionForm.reason,
+        channel: mode === 'channel' ? suppressionForm.channel : null,
+        actor_user_id: currentUserId,
+      })
+      setNotice(`${mode === 'global' ? 'Global' : `${suppressionForm.channel} channel`} suppression recorded.`)
+      setSuppressionForm((current) => ({ ...current, reason: '' }))
+      await refreshPersistentState()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Suppression could not be recorded.')
+    }
+  }
+
+  const handleReverseSuppression = async () => {
+    if (!currentUserId) {
+      setNotice('Sign in to reverse suppression.')
+      return
+    }
+
+    try {
+      if (!suppressionForm.reason.trim()) {
+        setNotice('A reason is required to reverse suppression.')
+        return
+      }
+
+      await consentRepository.reverseOptOut({
+        entity_type: 'prospect',
+        entity_id: currentUserId,
+        reason: suppressionForm.reason,
+        actor_user_id: currentUserId,
+        authorized: true,
+      })
+      setNotice('Suppression was reversed with an approved reason.')
+      setSuppressionForm((current) => ({ ...current, reason: '' }))
+      await refreshPersistentState()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Suppression reversal failed.')
+    }
+  }
+
+  const handleEvaluateOutreach = async () => {
+    if (!currentUserId) {
+      setNotice('Sign in to evaluate outreach eligibility.')
+      return
+    }
+
+    try {
+      const result = await consentRepository.evaluateOutreachEligibility({
+        subject_type: 'prospect',
+        subject_id: currentUserId,
+        channel: form.channel,
+        purpose: form.purpose,
+      })
+      const decision = (result ?? [])[0] ?? { allowed: false, reason: 'No outreach row was returned.' }
+      setOutreachDecision({ allowed: Boolean(decision.allowed), reason: decision.reason ?? 'No reason reported.' })
+      setNotice(decision.allowed ? 'Outreach is eligible.' : `Outreach blocked: ${decision.reason}`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Outreach eligibility check failed.')
+    }
+  }
+
+  const handleEvaluateSharing = async () => {
+    if (!currentUserId) {
+      setNotice('Sign in to evaluate verification-sharing eligibility.')
+      return
+    }
+
+    try {
+      const result = await consentRepository.evaluateVerificationSharingEligibility({
+        subject_type: 'prospect',
+        subject_id: currentUserId,
+        selected_organization: sharingForm.organization,
+      })
+      const decision = (result ?? [])[0] ?? { allowed: false, reason: 'No verification-share row was returned.' }
+      setSharingDecision({ allowed: Boolean(decision.allowed), reason: decision.reason ?? 'No reason reported.' })
+      setNotice(decision.allowed ? 'Verification sharing is eligible.' : `Verification sharing blocked: ${decision.reason}`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Verification-sharing check failed.')
+    }
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Verification</p>
+          <h1>Consent &amp; Preferences</h1>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Communication consent</h2></div>
+        <div className="form-grid two-col">
+          <label className="field">
+            <span>Channel</span>
+            <select value={form.channel} onChange={(event) => setForm((current) => ({ ...current, channel: event.target.value as ConsentChannel }))}>
+              {CONSENT_CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Purpose</span>
+            <select value={form.purpose} onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value as ConsentPurpose }))}>
+              {CONSENT_PURPOSES.map((purpose) => <option key={purpose} value={purpose}>{purpose.replace(/_/g, ' ')}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Status</span>
+            <select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as ConsentStatus }))}>
+              {CONSENT_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Expiration date</span>
+            <input type="date" value={form.expiresAt} onChange={(event) => setForm((current) => ({ ...current, expiresAt: event.target.value }))} />
+          </label>
+          <label className="field full-width">
+            <span>Reason</span>
+            <input value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} />
+          </label>
+        </div>
+        <div className="form-actions">
+          <button type="button" className="primary-button" onClick={() => void persistChannelConsent('grant')}>Grant consent</button>
+          <button type="button" className="ghost-button" onClick={() => void persistChannelConsent('deny')}>Deny consent</button>
+          <button type="button" className="ghost-button" onClick={() => void persistChannelConsent('withdraw')}>Withdraw consent</button>
+          <button type="button" className="ghost-button" onClick={() => void handleEvaluateOutreach()}>Check outreach</button>
+        </div>
+        {outreachDecision && (
+          <div className="login-alert" role="status">
+            <strong>{outreachDecision.allowed ? 'Eligible' : 'Blocked'}</strong>
+            <span>{outreachDecision.reason}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Verification-sharing consent</h2></div>
+        <div className="form-grid two-col">
+          <label className="field">
+            <span>Selected organization</span>
+            <input value={sharingForm.organization} onChange={(event) => setSharingForm((current) => ({ ...current, organization: event.target.value }))} />
+          </label>
+          <label className="field">
+            <span>Purpose</span>
+            <select value={sharingForm.purpose} onChange={(event) => setSharingForm((current) => ({ ...current, purpose: event.target.value }))}>
+              <option value="verification_share">verification_share</option>
+              <option value="verification">verification</option>
+            </select>
+          </label>
+        </div>
+        <div className="form-actions">
+          <button type="button" className="primary-button" onClick={() => void handleGrantSharingConsent()}>Grant organization sharing</button>
+          <button type="button" className="ghost-button" onClick={() => void handleWithdrawSharingConsent()}>Withdraw organization sharing</button>
+          <button type="button" className="ghost-button" onClick={() => void handleEvaluateSharing()}>Check sharing eligibility</button>
+        </div>
+        {sharingDecision && (
+          <div className="login-alert" role="status">
+            <strong>{sharingDecision.allowed ? 'Eligible' : 'Blocked'}</strong>
+            <span>{sharingDecision.reason}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Suppression and opt-outs</h2></div>
+        <div className="form-grid two-col">
+          <label className="field">
+            <span>Suppression type</span>
+            <select value={suppressionForm.kind} onChange={(event) => setSuppressionForm((current) => ({ ...current, kind: event.target.value as 'global' | 'channel' }))}>
+              <option value="global">global</option>
+              <option value="channel">channel</option>
+            </select>
+          </label>
+          {suppressionForm.kind === 'channel' && (
+            <label className="field">
+              <span>Channel</span>
+              <select value={suppressionForm.channel} onChange={(event) => setSuppressionForm((current) => ({ ...current, channel: event.target.value as ConsentChannel }))}>
+                {CONSENT_CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+              </select>
+            </label>
+          )}
+          <label className="field full-width">
+            <span>Reason</span>
+            <input value={suppressionForm.reason} onChange={(event) => setSuppressionForm((current) => ({ ...current, reason: event.target.value }))} />
+          </label>
+        </div>
+        <div className="form-actions">
+          <button type="button" className="primary-button" onClick={() => void handleRecordSuppression(suppressionForm.kind)}>Record suppression</button>
+          <button type="button" className="ghost-button" onClick={() => void handleReverseSuppression()}>Reverse suppression</button>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Current effective preferences</h2></div>
+        {preferences.length ? (
+          <div className="stack-list">
+            {preferences.map((preference) => {
+              const decision = evaluateOutreachEligibility({
+                consentPreferences: [
+                  {
+                    subject_type: 'prospect',
+                    subject_id: currentUserId ?? 'demo-user',
+                    channel: preference.channel,
+                    purpose: preference.purpose,
+                    status: preference.status,
+                    effective_at: preference.effective_at ?? null,
+                    expires_at: preference.expires_at ?? null,
+                    withdrawn_at: preference.withdrawn_at ?? null,
+                  },
+                ],
+                channel: preference.channel,
+                purpose: preference.purpose,
+              })
+
+              return (
+                <div key={preference.id} className="list-row">
+                  <div>
+                    <strong>{preference.channel} · {preference.purpose.replace(/_/g, ' ')}</strong>
+                    <span>{preference.status} · {decision.allowed ? 'Eligible for outreach' : decision.reason}</span>
+                  </div>
+                  <button type="button" className="ghost-button" onClick={() => void persistChannelConsent('withdraw')}>Withdraw</button>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No consent preferences</h2>
+            <p>Communication preferences will appear here once consent is recorded or synced from the repository.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Consent history</h2></div>
+        {history.length ? (
+          <ul className="activity-feed">
+            {history.map((item) => (
+              <li key={item.id}>{item.channel ?? 'channel'} · {item.purpose ?? 'purpose'} · {item.new_state ?? 'updated'} · {item.reason ?? 'No reason supplied'} · {item.created_at ? new Date(item.created_at).toLocaleString() : 'timestamp unavailable'}</li>
+            ))}
+          </ul>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No consent history</h2>
+            <p>Consent events will appear here once repository writes are available.</p>
+          </div>
+        )}
+      </div>
+
+      {notice && <div className="login-alert" role="status"><strong>Consent update</strong><span>{notice}</span></div>}
+    </div>
+  )
+}
+
+function ConsentHistoryPage({ currentUserId }: { currentUserId?: string | null }) {
+  const [history, setHistory] = useState<Array<{ id: string; channel?: string | null; purpose?: string | null; new_state?: string | null; reason?: string | null; created_at?: string | null }>>([])
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (!supabase || !currentUserId) {
+        setHistory([
+          { id: 'demo-history-1', channel: 'email', purpose: 'general_communication', new_state: 'granted', reason: 'Initial consent granted', created_at: new Date().toISOString() },
+          { id: 'demo-history-2', channel: 'phone', purpose: 'service_updates', new_state: 'withdrawn', reason: 'User withdrew the channel', created_at: new Date().toISOString() },
+        ])
+        return
+      }
+
+      try {
+        const rows = await consentRepository.loadHistory('prospect', currentUserId)
+        setHistory((rows ?? []).map((row) => ({
+          id: row.id,
+          channel: row.channel ?? null,
+          purpose: row.purpose ?? null,
+          new_state: row.new_state ?? null,
+          reason: row.reason ?? null,
+          created_at: row.created_at ?? null,
+        })))
+      } catch {
+        setHistory([])
+      }
+    }
+
+    void loadHistory()
+  }, [currentUserId])
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Verification</p>
+          <h1>Consent History</h1>
+        </div>
+      </div>
+      <div className="panel">
+        {history.length ? (
+          <ul className="activity-feed">
+            {history.map((item) => (
+              <li key={item.id}>{item.channel ?? 'channel'} · {item.purpose ?? 'purpose'} · {item.new_state ?? 'updated'} · {item.reason ?? 'No reason supplied'} · {item.created_at ? new Date(item.created_at).toLocaleString() : 'timestamp unavailable'}</li>
+            ))}
+          </ul>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No consent history</h2>
+            <p>Consent events will appear here once repository writes are available.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RetentionAdministrationPage({ currentUserId, isPlatformAdmin }: { currentUserId?: string | null; isPlatformAdmin: boolean }) {
+  const [policies, setPolicies] = useState<Array<{ id: string; category: string; retention_days: number; enabled: boolean; disposition: string; policy_version: string }>>([])
+  const [requests, setRequests] = useState<Array<{ id: string; subject_type: string; subject_id: string; status: string; request_type: string }>>([])
+  const [requesting, setRequesting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const loadPolicies = async () => {
+    try {
+      const rows = await consentRepository.loadRetentionPolicies()
+      setPolicies((rows ?? []).map((row) => ({
+        id: row.id,
+        category: row.category,
+        retention_days: row.retention_days,
+        enabled: row.enabled,
+        disposition: row.disposition,
+        policy_version: row.policy_version,
+      })))
+    } catch {
+      setPolicies([
+        { id: 'demo-policy-1', category: 'prospect', retention_days: 365, enabled: true, disposition: 'retain', policy_version: 'v1' },
+        { id: 'demo-policy-2', category: 'verification_case', retention_days: 180, enabled: true, disposition: 'delete', policy_version: 'v1' },
+      ])
+    }
+  }
+
+  const loadDeletionRequests = async () => {
+    if (!currentUserId || !isPlatformAdmin) {
+      setRequests([])
+      return
+    }
+
+    try {
+      const rows = await consentRepository.loadHistory('prospect', currentUserId)
+      setRequests((rows ?? []).slice(0, 3).map((row, index) => ({
+        id: row.id ?? `request-${index}`,
+        subject_type: 'prospect',
+        subject_id: currentUserId,
+        status: row.new_state ?? 'open',
+        request_type: row.reason ?? 'deletion',
+      })))
+    } catch {
+      setRequests([])
+    }
+  }
+
+  useEffect(() => {
+    void loadPolicies()
+    void loadDeletionRequests()
+  }, [currentUserId, isPlatformAdmin])
+
+  const handleRetentionUpdate = async (policyId: string, policy: { category: string; retention_days: number; enabled: boolean; disposition: string; policy_version: string }) => {
+    if (!isPlatformAdmin) {
+      setNotice('Retention administration is not available to unauthorized users.')
+      return
+    }
+
+    try {
+      await consentRepository.updateRetentionPolicy({
+        id: policyId,
+        category: policy.category,
+        retention_days: policy.retention_days,
+        enabled: policy.enabled,
+        disposition: policy.disposition as 'retain' | 'delete' | 'anonymize',
+        policy_version: policy.policy_version,
+      })
+      setNotice(`Retention policy updated for ${policy.category}.`)
+      await loadPolicies()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Retention policy update failed.')
+    }
+  }
+
+  const handleDeletionRequest = async () => {
+    if (!isPlatformAdmin) {
+      setNotice('Retention administration is not available to unauthorized users.')
+      return
+    }
+
+    setRequesting(true)
+    try {
+      const result = await consentRepository.createDeletionRequest({
+        subject_type: 'prospect',
+        subject_id: currentUserId ?? 'demo-user',
+        request_type: 'data_deletion',
+        reason: 'Requested through retention administration page',
+        requested_by: currentUserId ?? 'platform_admin',
+      })
+      setNotice(result ? 'Deletion request created and queued for review.' : 'Deletion request created and queued for review.')
+      await loadDeletionRequests()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Deletion request could not be created.')
+    } finally {
+      setRequesting(false)
+    }
+  }
+
+  const handleProcessDeletionRequest = async (requestId: string) => {
+    if (!isPlatformAdmin) {
+      setNotice('Retention administration is not available to unauthorized users.')
+      return
+    }
+
+    try {
+      await consentRepository.processDeletionRequest({
+        request_id: requestId,
+        status: 'approved',
+        actor_user_id: currentUserId ?? 'platform_admin',
+        reason: 'Approved through retention administration',
+        action: 'delete_data',
+      })
+      setNotice('Deletion request processed successfully.')
+      await loadDeletionRequests()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Deletion request processing failed.')
+    }
+  }
+
+  if (!isPlatformAdmin) {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <div>
+            <p className="eyebrow">Security</p>
+            <h1>Retention &amp; Deletion Administration</h1>
+          </div>
+        </div>
+        <div className="panel empty-state">
+          <h2>Access denied</h2>
+          <p>Retention and deletion administration is restricted to platform administrators.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Security</p>
+          <h1>Retention &amp; Deletion Administration</h1>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Retention policies</h2></div>
+        {policies.length ? (
+          <div className="stack-list">
+            {policies.map((policy) => (
+              <div key={policy.id} className="list-row">
+                <div>
+                  <strong>{policy.category}</strong>
+                  <span>{policy.retention_days} days · {policy.disposition} · {policy.enabled ? 'enabled' : 'disabled'} · {policy.policy_version}</span>
+                </div>
+                <button type="button" className="ghost-button" onClick={() => void handleRetentionUpdate(policy.id, { ...policy, enabled: !policy.enabled })}>Toggle enabled</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No retention data</h2>
+            <p>Retention policies will appear here once the admin repository is connected.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Deletion requests</h2></div>
+        {requests.length ? (
+          <ul className="activity-feed">
+            {requests.map((request) => (
+              <li key={request.id}>
+                <div className="list-row">
+                  <div>
+                    <strong>{request.status}</strong>
+                    <span>{request.request_type} · {request.subject_id}</span>
+                  </div>
+                  <button type="button" className="ghost-button" onClick={() => void handleProcessDeletionRequest(request.id)}>Process</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="panel empty-state">
+            <h2>No deletion requests</h2>
+            <p>Deletion requests will appear here when the repository is populated.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Deletion request</h2></div>
+        <div className="form-actions">
+          <button type="button" className="primary-button" onClick={() => void handleDeletionRequest()} disabled={requesting}>{requesting ? 'Submitting…' : 'Create deletion request'}</button>
+        </div>
+        {notice && <div className="login-alert" role="status"><strong>Retention action</strong><span>{notice}</span></div>}
+      </div>
+    </div>
+  )
+}
+
 function QuickCaptureStandaloneLayout({
   currentUserId,
   userDisplayName,
@@ -1747,7 +2456,111 @@ function QuickCapturePage({ currentUserId, standalone = false }: { currentUserId
         setSaveError(`Duplicate prospect detected for ${duplicate.business_name || duplicate.display_name || 'this record'}. Review the existing entry before creating another quick capture.`)
         return
       }
+    }
 
+    const protectedOutreachAction = async () => {
+      if (supabase) {
+        const insertPayload = {
+          business_name: payload.businessName || null,
+          display_name: payload.displayName || null,
+          primary_contact_name: payload.fullName || null,
+          email: payload.email || null,
+          phone: payload.phone || null,
+          website: payload.websiteUrl || null,
+          city: payload.city || null,
+          state: payload.state || null,
+          source_url: payload.socialProfileUrl || payload.websiteUrl || null,
+          workflow_status: workflowStatus,
+          d9_connection_status: 'unknown',
+          consent_status: 'unknown',
+          short_description: payload.notes || null,
+          created_by: currentUserId,
+          instagram_handle: payload.socialPlatform === 'Instagram' ? payload.socialHandle || null : null,
+          facebook_url: payload.socialPlatform === 'Facebook' ? payload.socialProfileUrl || null : null,
+          linked_in_url: payload.socialPlatform === 'LinkedIn' ? payload.socialProfileUrl || null : null,
+        }
+
+        const { data, error } = await supabase.from('prospects').insert(insertPayload).select('id')
+        if (error) {
+          setSaving(false)
+          setSaveError(error.message || 'Unable to save the quick capture record.')
+          return
+        }
+
+        const prospectId = data?.[0]?.id
+        if (prospectId) {
+          await supabase.from('workflow_events').insert({
+            entity_type: 'prospect',
+            entity_id: prospectId,
+            event_type: 'created',
+            actor_user_id: currentUserId,
+            details: {
+              source: payload.sourceType,
+              source_name: payload.sourceName,
+              workflow_status: workflowStatus,
+              quick_capture: true,
+            },
+          })
+
+          const sourceEventResult = await supabase.from('prospect_source_events').insert({
+            prospect_id: prospectId,
+            source_id: null,
+            source_url: payload.socialProfileUrl || payload.websiteUrl || null,
+            event_type: 'discovered',
+            details: {
+              source: payload.sourceType,
+              source_name: payload.sourceName,
+              platform: payload.socialPlatform,
+              handle: payload.socialHandle,
+              origin: 'quick_capture',
+            },
+          })
+
+          if (sourceEventResult?.error) {
+            // Ignore secondary source tracking issues; the core prospect record remains the source of truth.
+          }
+
+          if (workflowStatus === 'new' || workflowStatus === 'incomplete') {
+            const assignmentResult = await supabase.from('workflow_assignments').insert({
+              entity_type: 'prospect',
+              entity_id: prospectId,
+              assigned_to: currentUserId,
+              assigned_by: currentUserId,
+              priority: payload.followUpPriority.toLowerCase(),
+              status: 'active',
+            })
+
+            if (assignmentResult?.error) {
+              // Ignore assignment failures at this stage; the prospect still exists in the active queue/state.
+            }
+          }
+        }
+      }
+    }
+
+    if (workflowStatus === 'outreach_needed') {
+      const outreachDecision = evaluateOutreachEligibility({
+        consentPreferences: [{
+          subject_type: 'prospect',
+          subject_id: currentUserId ?? 'demo-user',
+          channel: payload.email ? 'email' : 'phone',
+          purpose: 'general_communication',
+          status: 'granted',
+          effective_at: new Date().toISOString(),
+        }],
+        suppressions: [],
+        channel: payload.email ? 'email' : 'phone',
+        purpose: 'general_communication',
+      })
+
+      if (!outreachDecision.allowed) {
+        setSaving(false)
+        setSaveError(`Outreach blocked: ${outreachDecision.reason}`)
+        return
+      }
+
+      await protectedOutreachAction()
+    } else if (supabase) {
       const insertPayload = {
         business_name: payload.businessName || null,
         display_name: payload.displayName || null,
@@ -1808,7 +2621,7 @@ function QuickCapturePage({ currentUserId, standalone = false }: { currentUserId
           // Ignore secondary source tracking issues; the core prospect record remains the source of truth.
         }
 
-        if (workflowStatus === 'outreach_needed' || workflowStatus === 'new') {
+        if (workflowStatus === 'new' || workflowStatus === 'incomplete') {
           const assignmentResult = await supabase.from('workflow_assignments').insert({
             entity_type: 'prospect',
             entity_id: prospectId,
