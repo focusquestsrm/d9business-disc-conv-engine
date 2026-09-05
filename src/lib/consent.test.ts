@@ -110,6 +110,57 @@ describe('consent governance', () => {
     expect(expired.reason).toMatch(/expired|not currently active/i)
   })
 
+  it('verifies command-specific policy clauses for every Release 3B policy block', () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260906_000001_milestone_3b_consent_preferences.sql'), 'utf8')
+    const policyBlocks = [...migrationSql.matchAll(/CREATE POLICY[\s\S]*?;/g)].map(match => match[0])
+
+    const selectOptOutPolicy = policyBlocks.find(block =>
+      block.includes('"Authenticated users can read active opt-out suppression evidence"') &&
+      block.includes('ON public.opt_outs') &&
+      block.includes('FOR SELECT') &&
+      block.includes('USING (auth.uid() IS NOT NULL)') &&
+      !block.includes('WITH CHECK')
+    )
+    const insertOptOutPolicy = policyBlocks.find(block =>
+      block.includes('"Authenticated users can manage opt_outs"') &&
+      block.includes('ON public.opt_outs') &&
+      block.includes('FOR INSERT') &&
+      block.includes('WITH CHECK (auth.uid() IS NOT NULL)') &&
+      !block.includes('USING')
+    )
+    const updateOptOutPolicy = policyBlocks.find(block =>
+      block.includes('"Authenticated users can update opt_outs"') &&
+      block.includes('ON public.opt_outs') &&
+      block.includes('FOR UPDATE') &&
+      block.includes('USING (auth.uid() IS NOT NULL)') &&
+      block.includes('WITH CHECK (auth.uid() IS NOT NULL)')
+    )
+    const selectHistoryPolicy = policyBlocks.find(block =>
+      block.includes('"Authorized users can read consent history"') &&
+      block.includes('ON public.consent_history') &&
+      block.includes('FOR SELECT') &&
+      block.includes('USING (auth.uid() IS NOT NULL') &&
+      !block.includes('WITH CHECK')
+    )
+
+    expect(selectOptOutPolicy).toBeTruthy()
+    expect(insertOptOutPolicy).toBeTruthy()
+    expect(updateOptOutPolicy).toBeTruthy()
+    expect(selectHistoryPolicy).toBeTruthy()
+    expect(policyBlocks.some(block => block.includes('ON public.consent_preferences') && block.includes('FOR ALL'))).toBe(true)
+    expect(policyBlocks.some(block => block.includes('ON public.verification_sharing_consents') && block.includes('FOR ALL'))).toBe(true)
+    expect(policyBlocks.some(block => block.includes('ON public.retention_policies') && block.includes('FOR ALL'))).toBe(true)
+    expect(policyBlocks.some(block => block.includes('ON public.deletion_requests') && block.includes('FOR ALL'))).toBe(true)
+    expect(policyBlocks.some(block => block.includes('ON public.consent_history') && block.includes('FOR SELECT'))).toBe(true)
+    expect(policyBlocks.some(block => block.includes('ON public.opt_outs') && block.includes('FOR INSERT'))).toBe(true)
+    expect(policyBlocks.some(block => block.includes('ON public.opt_outs') && block.includes('FOR UPDATE'))).toBe(true)
+    expect(migrationSql).toContain('DROP POLICY IF EXISTS "Authenticated users can read active opt-out suppression evidence" ON public.opt_outs;')
+    expect(migrationSql).toContain('DROP TRIGGER IF EXISTS consent_history_block_update ON public.consent_history;')
+    expect(migrationSql).toContain('DROP POLICY IF EXISTS "Authenticated users can manage opt_outs" ON public.opt_outs;')
+    expect(migrationSql).toContain('ALTER TABLE public.consent_preferences ENABLE ROW LEVEL SECURITY;')
+    expect(migrationSql).toContain('ALTER TABLE public.retention_policies ENABLE ROW LEVEL SECURITY;')
+  })
+
   it('parses the release 3B migration and verifier SQL without syntax issues', async () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260906_000001_milestone_3b_consent_preferences.sql'), 'utf8')
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3b_consent_preferences.sql'), 'utf8')

@@ -879,8 +879,7 @@ CREATE POLICY "Platform admins manage deletion requests" ON public.deletion_requ
 DROP POLICY IF EXISTS "Authenticated users can read active opt-out suppression evidence" ON public.opt_outs;
 CREATE POLICY "Authenticated users can read active opt-out suppression evidence" ON public.opt_outs
   FOR SELECT
-  USING (auth.uid() IS NOT NULL)
-  WITH CHECK (auth.uid() IS NOT NULL);
+  USING (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Authenticated users can manage opt_outs" ON public.opt_outs;
 CREATE POLICY "Authenticated users can manage opt_outs" ON public.opt_outs

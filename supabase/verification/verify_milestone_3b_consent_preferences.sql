@@ -99,6 +99,26 @@ WITH substantive_results AS (
          CAST((SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'retention_policies') AS text),
          CASE WHEN (SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'retention_policies') > 0 THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN (SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'retention_policies') > 0 THEN 'Retention policy RLS exists.' ELSE 'Retention policy RLS is missing.' END
+  UNION ALL
+  SELECT 'POLICY', 'public.consent_history', 'select_policy_command', 'SELECT',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'consent_history' AND cmdname = 'SELECT') THEN 'SELECT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'consent_history' AND cmdname = 'SELECT') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'consent_history' AND cmdname = 'SELECT') THEN 'Consent history exposes a SELECT policy without update/delete permission.' ELSE 'Consent history SELECT policy is missing.' END
+  UNION ALL
+  SELECT 'POLICY', 'public.opt_outs', 'insert_policy_command', 'INSERT',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'INSERT') THEN 'INSERT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'INSERT') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'INSERT') THEN 'Opt-out insert policy exists.' ELSE 'Opt-out insert policy is missing.' END
+  UNION ALL
+  SELECT 'POLICY', 'public.opt_outs', 'update_policy_command', 'UPDATE',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'UPDATE') THEN 'UPDATE' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'UPDATE') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'UPDATE') THEN 'Opt-out update policy exists with USING and WITH CHECK.' ELSE 'Opt-out update policy is missing.' END
+  UNION ALL
+  SELECT 'POLICY', 'public.opt_outs', 'select_policy_command', 'SELECT',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'SELECT') THEN 'SELECT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'SELECT') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'opt_outs' AND cmdname = 'SELECT') THEN 'Opt-out select policy exists.' ELSE 'Opt-out select policy is missing.' END
 ),
 all_results AS (
   SELECT category, object_name, check_name, expected_result, actual_result, status, details FROM substantive_results
