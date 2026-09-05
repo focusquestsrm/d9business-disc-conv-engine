@@ -2539,23 +2539,26 @@ function QuickCapturePage({ currentUserId, standalone = false }: { currentUserId
     }
 
     if (workflowStatus === 'outreach_needed') {
-      const outreachDecision = evaluateOutreachEligibility({
-        consentPreferences: [{
-          subject_type: 'prospect',
-          subject_id: currentUserId ?? 'demo-user',
-          channel: payload.email ? 'email' : 'phone',
-          purpose: 'general_communication',
-          status: 'granted',
-          effective_at: new Date().toISOString(),
-        }],
-        suppressions: [],
-        channel: payload.email ? 'email' : 'phone',
-        purpose: 'general_communication',
-      })
+      try {
+        const outcome = currentUserId
+          ? await consentRepository.evaluateOutreachEligibility({
+            subject_type: 'prospect',
+            subject_id: currentUserId,
+            channel: payload.email ? 'email' : 'phone',
+            purpose: 'general_communication',
+          })
+          : [{ allowed: false, reason: 'Sign in to verify outreach eligibility.' }]
 
-      if (!outreachDecision.allowed) {
+        const outreachDecision = (outcome ?? [])[0] ?? { allowed: false, reason: 'No active consent record was available for outreach.' }
+
+        if (!outreachDecision.allowed) {
+          setSaving(false)
+          setSaveError(`Outreach blocked: ${outreachDecision.reason}`)
+          return
+        }
+      } catch (error) {
         setSaving(false)
-        setSaveError(`Outreach blocked: ${outreachDecision.reason}`)
+        setSaveError(error instanceof Error ? error.message : 'Outreach eligibility check failed.')
         return
       }
 

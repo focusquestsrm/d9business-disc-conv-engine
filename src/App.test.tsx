@@ -233,6 +233,242 @@ describe('quick capture', () => {
   })
 })
 
+describe('Release 3B consent UI', () => {
+  const primeAuthenticatedSession = async (roleCode: 'platform_admin' | 'reviewer' = 'reviewer') => {
+    const mockSupabase = await getMockSupabase()
+
+    mockSupabase.auth.onAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: vi.fn() } },
+    })
+
+    mockSupabase.auth.getSession.mockResolvedValue({
+      data: {
+        session: {
+          user: {
+            id: 'user-321',
+            email: 'member@example.com',
+            user_metadata: { full_name: 'Mia Reed' },
+          },
+        },
+      },
+      error: null,
+    })
+
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'user_role_assignments') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(async () => ({ data: [{ role_id: roleCode === 'platform_admin' ? 'admin-role-1' : 'review-role-1' }], error: null })),
+            })),
+          })),
+        }
+      }
+
+      if (table === 'roles') {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(async () => ({ data: [{ code: roleCode, display_name: roleCode === 'platform_admin' ? 'Platform Administrator' : 'Reviewer' }], error: null })),
+          })),
+        }
+      }
+
+      return {
+        select: vi.fn(() => ({
+          or: vi.fn(async () => ({ data: [], error: null })),
+          eq: vi.fn(() => ({ eq: vi.fn(async () => ({ data: [], error: null })) })),
+          in: vi.fn(async () => ({ data: [], error: null })),
+          order: vi.fn(async () => ({ data: [], error: null })),
+        })),
+        insert: vi.fn(async () => ({ data: [{ id: 'generated-id' }], error: null })),
+      }
+    })
+  }
+
+  it('renders the consent and retention navigation for authenticated users', async () => {
+    await primeAuthenticatedSession('platform_admin')
+
+    render(
+      <MemoryRouter initialEntries={['/consent-preferences']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /Consent & Preferences/i })).toBeInTheDocument()
+  })
+
+  it('blocks retention access for non-admin users', async () => {
+    await primeAuthenticatedSession('reviewer')
+
+    render(
+      <MemoryRouter initialEntries={['/retention-and-deletion']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/Insufficient access/i)).toBeInTheDocument()
+    expect(screen.getByText(/current role does not permit access/i)).toBeInTheDocument()
+  })
+
+  it('persists granting and withdrawal of channel consent and reloads state', async () => {
+    await primeAuthenticatedSession('reviewer')
+
+    const { consentRepository } = await import('./lib/consentRepository')
+    const grantSpy = vi.spyOn(consentRepository, 'grantChannelConsent').mockResolvedValue({ ok: true } as any)
+    const withdrawSpy = vi.spyOn(consentRepository, 'withdrawChannelConsent').mockResolvedValue({ ok: true } as any)
+    vi.spyOn(consentRepository, 'loadEffectiveConsent').mockResolvedValue([
+      { id: 'email-1', subject_type: 'prospect', subject_id: 'user-321', channel: 'email', purpose: 'general_communication', status: 'granted', effective_at: new Date().toISOString() },
+      { id: 'phone-1', subject_type: 'prospect', subject_id: 'user-321', channel: 'phone', purpose: 'service_updates', status: 'withdrawn', effective_at: new Date().toISOString(), withdrawn_at: new Date().toISOString() },
+      { id: 'sms-1', subject_type: 'prospect', subject_id: 'user-321', channel: 'text', purpose: 'general_communication', status: 'granted', effective_at: new Date().toISOString() },
+      { id: 'social-1', subject_type: 'prospect', subject_id: 'user-321', channel: 'social_media', purpose: 'marketing', status: 'granted', effective_at: new Date().toISOString() },
+    ])
+    vi.spyOn(consentRepository, 'loadHistory').mockResolvedValue([
+      { id: 'history-1', subject_type: 'prospect', subject_id: 'user-321', channel: 'email', purpose: 'general_communication', new_state: 'granted', reason: 'test grant', created_at: new Date().toISOString() },
+    ])
+
+    render(
+      <MemoryRouter initialEntries={['/consent-preferences']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/email · general communication/i)).toBeInTheDocument()
+    expect(screen.getByText(/phone · service updates/i)).toBeInTheDocument()
+    expect(screen.getByText(/social[_ ]media.*marketing/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /grant consent/i }))
+    await waitFor(() => expect(grantSpy).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: /withdraw consent/i }))
+    await waitFor(() => expect(withdrawSpy).toHaveBeenCalled())
+  })
+
+  it('grants and withdraws organization-sharing consent and enforces organization-specific restriction', async () => {
+    await primeAuthenticatedSession('reviewer')
+
+    const { consentRepository } = await import('./lib/consentRepository')
+    const grantOrg = vi.spyOn(consentRepository, 'grantVerificationSharingConsent').mockResolvedValue({ ok: true } as any)
+    const withdrawOrg = vi.spyOn(consentRepository, 'withdrawVerificationSharingConsent').mockResolvedValue({ ok: true } as any)
+    const evaluateSpy = vi.spyOn(consentRepository, 'evaluateVerificationSharingEligibility').mockResolvedValue([{ allowed: false, reason: 'Selected organization does not match a valid consent record.' }])
+
+    render(
+      <MemoryRouter initialEntries={['/consent-preferences']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /Consent & Preferences/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Grant organization sharing/i }))
+    await waitFor(() => expect(grantOrg).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: /Withdraw organization sharing/i }))
+    await waitFor(() => expect(withdrawOrg).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: /Check sharing eligibility/i }))
+    await waitFor(() => {
+      expect(evaluateSpy).toHaveBeenCalled()
+      expect(screen.getByText(/Verification sharing blocked:/i)).toBeInTheDocument()
+    })
+  })
+
+  it('records global and channel suppressions and requires reason when reversing them', async () => {
+    await primeAuthenticatedSession('reviewer')
+
+    const { consentRepository } = await import('./lib/consentRepository')
+    const recordSpy = vi.spyOn(consentRepository, 'recordOptOut').mockResolvedValue({ ok: true } as any)
+    const reverseSpy = vi.spyOn(consentRepository, 'reverseOptOut').mockResolvedValue({ ok: true } as any)
+
+    render(
+      <MemoryRouter initialEntries={['/consent-preferences']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /Consent & Preferences/i })).toBeInTheDocument()
+    const suppressionReasonInput = screen.getAllByLabelText(/reason/i)[1]
+    fireEvent.change(suppressionReasonInput, { target: { value: 'Test suppression' } })
+    fireEvent.click(screen.getByRole('button', { name: /Record suppression/i }))
+    await waitFor(() => expect(recordSpy).toHaveBeenCalledWith(expect.objectContaining({
+      entity_type: 'prospect',
+      entity_id: 'user-321',
+      reason: 'Test suppression',
+      source: 'manual_ui',
+    })))
+
+    fireEvent.change(suppressionReasonInput, { target: { value: 'Test suppression' } })
+    fireEvent.click(screen.getByRole('button', { name: /Reverse suppression/i }))
+    await waitFor(() => expect(reverseSpy).toHaveBeenCalledWith(expect.objectContaining({
+      entity_type: 'prospect',
+      entity_id: 'user-321',
+      reason: 'Test suppression',
+      authorized: true,
+    })))
+  })
+
+  it('loads consent history from the repository and displays read-only audit entries', async () => {
+    await primeAuthenticatedSession('reviewer')
+
+    const { consentRepository } = await import('./lib/consentRepository')
+    vi.spyOn(consentRepository, 'loadHistory').mockResolvedValue([
+      { id: 'history-1', subject_type: 'prospect', subject_id: 'user-321', channel: 'email', purpose: 'general_communication', new_state: 'granted', reason: 'User granted consent', created_at: new Date().toISOString() },
+      { id: 'history-2', subject_type: 'prospect', subject_id: 'user-321', channel: 'phone', purpose: 'service_updates', new_state: 'withdrawn', reason: 'User withdrew channel', created_at: new Date().toISOString() },
+    ])
+
+    render(
+      <MemoryRouter initialEntries={['/consent-history']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/User granted consent/i)).toBeInTheDocument()
+    expect(screen.getByText(/User withdrew channel/i)).toBeInTheDocument()
+  })
+
+  it('shows repository errors from consent writes to the user', async () => {
+    await primeAuthenticatedSession('reviewer')
+
+    const { consentRepository } = await import('./lib/consentRepository')
+    vi.spyOn(consentRepository, 'grantChannelConsent').mockRejectedValue(new Error('Repository write failed.'))
+
+    render(
+      <MemoryRouter initialEntries={['/consent-preferences']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /Consent & Preferences/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /grant consent/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Repository write failed\./i)).toBeInTheDocument()
+    })
+  })
+
+  it('checks outreach eligibility before allowing a save', async () => {
+    await primeAuthenticatedSession('reviewer')
+
+    const { consentRepository } = await import('./lib/consentRepository')
+    const evaluateSpy = vi.spyOn(consentRepository, 'evaluateOutreachEligibility').mockResolvedValue([
+      { allowed: false, reason: 'Consent was withdrawn.', channel: 'email', purpose: 'general_communication', consentStatus: 'withdrawn' },
+    ])
+
+    render(
+      <MemoryRouter initialEntries={['/quick-capture']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByLabelText(/social handle/i)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/social handle/i), { target: { value: '@northsidecreative' } })
+    fireEvent.click(screen.getByRole('button', { name: /save quick capture/i }))
+
+    await waitFor(() => {
+      expect(evaluateSpy).toHaveBeenCalled()
+      expect(screen.getByText(/Outreach blocked:/i)).toBeInTheDocument()
+    })
+  })
+})
+
 describe('App', () => {
   beforeEach(async () => {
     const mockSupabase = await getMockSupabase()
