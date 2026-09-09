@@ -454,13 +454,13 @@ $$;
 CREATE OR REPLACE FUNCTION public.record_registration_journey_event(
   p_tenant_id uuid,
   p_prospect_id uuid,
+  p_event_source text,
+  p_stage text,
   p_invitation_id uuid DEFAULT NULL,
   p_profile_link_id uuid DEFAULT NULL,
   p_related_thread_id uuid DEFAULT NULL,
   p_related_message_id uuid DEFAULT NULL,
-  p_event_source text,
   p_actor text DEFAULT NULL,
-  p_stage text,
   p_previous_stage text DEFAULT NULL,
   p_new_stage text DEFAULT NULL,
   p_metadata jsonb DEFAULT '{}'::jsonb
@@ -504,11 +504,11 @@ $$;
 CREATE OR REPLACE FUNCTION public.ingest_brilliant_directories_sync_event(
   p_tenant_id uuid,
   p_prospect_id uuid,
+  p_event_type text,
   p_invitation_id uuid DEFAULT NULL,
   p_profile_link_id uuid DEFAULT NULL,
   p_external_member_id text DEFAULT NULL,
   p_external_profile_id text DEFAULT NULL,
-  p_event_type text,
   p_provider_payload jsonb DEFAULT '{}'::jsonb,
   p_payload_hash text DEFAULT NULL
 ) RETURNS uuid LANGUAGE plpgsql AS $$

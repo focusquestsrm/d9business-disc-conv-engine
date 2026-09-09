@@ -21,9 +21,9 @@ const REQUIRED_MIGRATION_RPC_SIGNATURES = [
   'public.start_registration_handoff(uuid,uuid,uuid,text,text,text,text,text,jsonb)',
   'public.link_prospect_to_member_profile(uuid,uuid,text,text,text,text,numeric,text,text,text)',
   'public.find_registration_duplicate_candidates(uuid,uuid,text,text,text,text,text)',
-  'public.record_registration_journey_event(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,jsonb)',
+  'public.record_registration_journey_event(uuid,uuid,text,text,uuid,uuid,uuid,uuid,text,text,text,jsonb)',
   'public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)',
-  'public.ingest_brilliant_directories_sync_event(uuid,uuid,uuid,uuid,text,text,text,jsonb,text)',
+  'public.ingest_brilliant_directories_sync_event(uuid,uuid,text,uuid,uuid,text,text,jsonb,text)',
   'public.get_registration_journey(uuid,uuid,integer)',
   'public.get_registration_review_queue(uuid,text)',
 ] as const
@@ -36,9 +36,9 @@ const REQUIRED_VERIFIER_RPC_SIGNATURES = [
   'public.start_registration_handoff(uuid,uuid,uuid,text,text,text,text,text,jsonb)',
   'public.link_prospect_to_member_profile(uuid,uuid,text,text,text,text,numeric,text,text,text)',
   'public.find_registration_duplicate_candidates(uuid,uuid,text,text,text,text,text)',
-  'public.record_registration_journey_event(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,jsonb)',
+  'public.record_registration_journey_event(uuid,uuid,text,text,uuid,uuid,uuid,uuid,text,text,text,jsonb)',
   'public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)',
-  'public.ingest_brilliant_directories_sync_event(uuid,uuid,uuid,uuid,text,text,text,jsonb,text)',
+  'public.ingest_brilliant_directories_sync_event(uuid,uuid,text,uuid,uuid,text,text,jsonb,text)',
   'public.get_registration_journey(uuid,uuid,integer)',
   'public.get_registration_review_queue(uuid,text)',
 ] as const
