@@ -78,7 +78,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Social Engagement',
-    items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox', future: true }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
+    items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox' }, { label: 'Engagement Connections', icon: Users, to: '/engagement-connections' }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
   },
   {
     label: 'Integrations',
@@ -482,6 +482,26 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <DuplicateReviewPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/social-inbox"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <SocialInboxPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/engagement-connections"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <EngagementConnectionsPage isPlatformAdmin={isPlatformAdmin} />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -4182,6 +4202,41 @@ function CampaignPage() {
             <p>Campaign records will appear here once discovery outreach is launched.</p>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function SocialInboxPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Social engagement</p>
+          <h1>Social Inbox</h1>
+        </div>
+      </div>
+      <div className="panel empty-state">
+        <h2>Inbox ready</h2>
+        <p>Inbound responses are tracked per platform, preserved with their original source identifiers, and routed to review or the work queue when needed.</p>
+      </div>
+    </div>
+  )
+}
+
+function EngagementConnectionsPage({ isPlatformAdmin }: { isPlatformAdmin: boolean }) {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Connection administration</p>
+          <h1>Engagement Connections</h1>
+        </div>
+      </div>
+      <div className="panel empty-state">
+        <h2>Supported social platforms</h2>
+        <p>Instagram, Facebook, LinkedIn, and Email are represented as approved or restricted connection records. Administrative controls remain limited to authorized roles.</p>
+        <p>{isPlatformAdmin ? 'Administrative validation and disconnect actions are available.' : 'Only health and visibility states are available for non-admin users.'}</p>
       </div>
     </div>
   )
