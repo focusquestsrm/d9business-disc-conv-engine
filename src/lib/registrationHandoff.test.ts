@@ -285,6 +285,27 @@ describe('registration profile handoff', () => {
     })).resolves.toHaveProperty('payload')
   })
 
+  it('enforces direct database guardrails for invitation approval and append-only journey history', async () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260911_000001_milestone_3e_registration_profile_handoff.sql'), 'utf8')
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3e_registration_profile_handoff.sql'), 'utf8')
+
+    expect(migrationSql).toContain('CREATE OR REPLACE FUNCTION public.require_registration_invitation_approval')
+    expect(migrationSql).toContain("NEW.status = 'sent'")
+    expect(migrationSql).toContain('NEW.human_approval_granted IS NOT TRUE')
+    expect(migrationSql).toContain('BEFORE INSERT OR UPDATE ON public.registration_invitations')
+    expect(migrationSql).toContain('CREATE TRIGGER registration_invitations_approval_gate')
+
+    expect(migrationSql).toContain('CREATE OR REPLACE FUNCTION public.prevent_registration_journey_append_mutation')
+    expect(migrationSql).toContain("IF TG_OP IN ('UPDATE', 'DELETE')")
+    expect(migrationSql).toContain('BEFORE UPDATE OR DELETE ON public.registration_journey_events')
+    expect(migrationSql).toContain('CREATE TRIGGER registration_journey_events_append_only')
+
+    expect(verifierSql).toContain('NOT tgisinternal')
+    expect(verifierSql).toContain('tgtype & 2')
+    expect(verifierSql).toContain('tgtype & 4')
+    expect(verifierSql).toContain('pg_get_functiondef')
+  })
+
   it('keeps the migration and verifier aligned to the exact canonical 3E RPC signatures', async () => {
     await loadModule()
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260911_000001_milestone_3e_registration_profile_handoff.sql'), 'utf8')

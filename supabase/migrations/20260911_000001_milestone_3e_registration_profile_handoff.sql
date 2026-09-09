@@ -591,9 +591,18 @@ $$;
 CREATE OR REPLACE FUNCTION public.require_registration_invitation_approval()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.human_approval_granted IS NOT TRUE THEN
-    RAISE EXCEPTION 'Human approval is required before this invitation can be sent.';
+  IF NEW.status = 'sent' THEN
+    IF NEW.human_approval_granted IS NOT TRUE
+      OR NEW.approved_by IS NULL
+      OR NEW.approved_at IS NULL
+      OR NEW.consent_allowed IS NOT TRUE
+      OR NEW.opt_out_active IS TRUE
+      OR NEW.frequency_ok IS NOT TRUE
+    THEN
+      RAISE EXCEPTION 'Human approval is required before this invitation can be sent.';
+    END IF;
   END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -601,13 +610,17 @@ $$;
 CREATE OR REPLACE FUNCTION public.prevent_registration_journey_append_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  RAISE EXCEPTION 'Registration journey history is append-only and cannot be mutated.';
+  IF TG_OP IN ('UPDATE', 'DELETE') THEN
+    RAISE EXCEPTION 'Registration journey history is append-only and cannot be mutated.';
+  END IF;
+
+  RETURN NEW;
 END;
 $$;
 
 DROP TRIGGER IF EXISTS registration_invitations_approval_gate ON public.registration_invitations;
 CREATE TRIGGER registration_invitations_approval_gate
-  BEFORE UPDATE OR INSERT ON public.registration_invitations
+  BEFORE INSERT OR UPDATE ON public.registration_invitations
   FOR EACH ROW
   EXECUTE FUNCTION public.require_registration_invitation_approval();
 
