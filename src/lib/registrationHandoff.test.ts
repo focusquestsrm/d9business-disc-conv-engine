@@ -32,9 +32,42 @@ const REQUIRED_VERIFIER_RPC_SIGNATURES = [
   'public.evaluate_registration_invitation_eligibility(uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text)',
   'public.create_registration_invitation(uuid,uuid,text,text,boolean,boolean,boolean,boolean,boolean,jsonb,uuid,text,text,uuid,text,timestamptz,boolean,jsonb)',
   'public.approve_registration_invitation(uuid,uuid,text,boolean,boolean)',
+  'public.record_registration_invitation_sent(uuid,uuid,text)',
   'public.start_registration_handoff(uuid,uuid,uuid,text,text,text,text,text,jsonb)',
   'public.link_prospect_to_member_profile(uuid,uuid,text,text,text,text,numeric,text,text,text)',
   'public.find_registration_duplicate_candidates(uuid,uuid,text,text,text,text,text)',
+  'public.record_registration_journey_event(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,jsonb)',
+  'public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)',
+  'public.ingest_brilliant_directories_sync_event(uuid,uuid,uuid,uuid,text,text,text,jsonb,text)',
+  'public.get_registration_journey(uuid,uuid,integer)',
+  'public.get_registration_review_queue(uuid,text)',
+] as const
+
+const REQUIRED_BEHAVIORAL_VERIFIER_CHECKS = [
+  'invitation_status_constraint',
+  'required_stage_invitation_sent',
+  'required_stage_registration_started',
+  'required_stage_profile_created',
+  'required_stage_profile_claimed',
+  'required_stage_profile_completed',
+  'required_stage_verification_pending',
+  'required_stage_verified',
+  'valid_transition_enforcement',
+  'journey_append_only_update_protection',
+  'journey_append_only_delete_protection',
+  'release_3b_consent_dependency',
+  'release_3b_opt_out_dependency',
+  'release_3c_engagement_thread_message_linkage',
+  'release_3d_approval_outreach_linkage',
+  'invitation_single_use_enforcement',
+  'invitation_token_uniqueness',
+  'provider_sync_event_idempotency',
+  'external_provider_member_uniqueness',
+  'ambiguous_match_review_support',
+  'deterministic_duplicate_match_support',
+  'human_approval_before_invitation_sent',
+  'consent_and_opt_out_enforcement_before_invitation_sent',
+  'provider_neutral_disconnected_brilliant_directories_state',
 ] as const
 
 const splitTopLevel = (value: string) => {
@@ -273,7 +306,17 @@ describe('registration profile handoff', () => {
       expect(normalizeSqlSignature(verifierSignature ?? '')).toContain(normalizeSqlSignature(signature))
     }
 
+    for (const behaviorCheck of REQUIRED_BEHAVIORAL_VERIFIER_CHECKS) {
+      expect(verifierSql).toContain(`'${behaviorCheck}'`)
+      expect(verifierSql).toContain(`'${behaviorCheck}',`)
+    }
+
     expect((verifierSql.match(/overall_status/g) ?? []).length).toBe(1)
+    expect((verifierSql.match(/COUNT\(\*\) FILTER \(WHERE status = 'PASS'\)/g) ?? []).length).toBe(1)
+    expect(verifierSql).toContain('UNION ALL')
+    expect(verifierSql).toContain('ORDER BY CASE WHEN category = \'OVERALL\' THEN 1 ELSE 0 END, object_name, check_name')
+    expect(verifierSql).not.toContain('pg_policies.cmdname')
+    expect(verifierSql).not.toContain('WITH CHECK')
     expect(() => parseSync(migrationSql)).not.toThrow()
     expect(() => parseSync(verifierSql)).not.toThrow()
     console.log('MIGRATION_3E_PARSE_OK')
