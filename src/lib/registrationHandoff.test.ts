@@ -13,9 +13,24 @@ import {
 } from './registrationHandoff'
 import { registrationHandoffRepository } from './registrationHandoffRepository'
 
+const REQUIRED_RPC_SIGNATURES = [
+  'public.evaluate_registration_invitation_eligibility(uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text)',
+  'public.create_registration_invitation(uuid,uuid,text,text,boolean,boolean,boolean,boolean,boolean,jsonb,uuid,text,text,uuid,text,timestamptz,boolean,jsonb)',
+  'public.approve_registration_invitation(uuid,uuid,text,boolean,boolean)',
+  'public.record_registration_invitation_sent(uuid,uuid,text)',
+  'public.start_registration_handoff(uuid,uuid,uuid,text,text,text,text,text,jsonb)',
+  'public.link_prospect_to_member_profile(uuid,uuid,text,text,text,text,numeric,text,text,text)',
+  'public.find_registration_duplicate_candidates(uuid,uuid,text,text,text,text,text)',
+  'public.record_registration_journey_event(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,jsonb)',
+  'public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)',
+  'public.ingest_brilliant_directories_sync_event(uuid,uuid,uuid,uuid,text,text,text,jsonb,text)',
+  'public.get_registration_journey(uuid,uuid,integer)',
+  'public.get_registration_review_queue(uuid,text)',
+] as const
+
 describe('registration profile handoff', () => {
-  it('tracks the required lifecycle stages and valid transitions', () => {
-    expect(REGISTRATION_LIFECYCLE_STAGES).toEqual(expect.arrayContaining([
+  it('tracks all seven lifecycle stages and valid/invalid transitions', () => {
+    expect(REGISTRATION_LIFECYCLE_STAGES).toEqual([
       'invitation_sent',
       'registration_started',
       'profile_created',
@@ -23,15 +38,20 @@ describe('registration profile handoff', () => {
       'profile_completed',
       'verification_pending',
       'verified',
-    ]))
+    ])
 
+    expect(canAdvanceRegistrationStage(null, 'invitation_sent')).toBe(true)
     expect(canAdvanceRegistrationStage('invitation_sent', 'registration_started')).toBe(true)
+    expect(canAdvanceRegistrationStage('registration_started', 'profile_created')).toBe(true)
+    expect(canAdvanceRegistrationStage('profile_created', 'profile_claimed')).toBe(true)
+    expect(canAdvanceRegistrationStage('profile_claimed', 'profile_completed')).toBe(true)
     expect(canAdvanceRegistrationStage('profile_completed', 'verified')).toBe(true)
     expect(canAdvanceRegistrationStage('verified', 'profile_completed')).toBe(false)
     expect(canAdvanceRegistrationStage('profile_created', 'profile_completed')).toBe(false)
+    expect(canAdvanceRegistrationStage('profile_completed', 'profile_claimed')).toBe(false)
   })
 
-  it('requires consent, opt-out, human approval, and frequency checks', () => {
+  it('requires approval, consent, opt-out, expiry, revocation, and frequency gates', () => {
     const eligible = evaluateRegistrationInvitationEligibility({
       channel: 'email',
       consentAllowed: true,
@@ -41,57 +61,18 @@ describe('registration profile handoff', () => {
       isExpired: false,
       isRevoked: false,
     })
-
     expect(eligible.allowed).toBe(true)
     expect(eligible.code).toBe('eligible')
 
-    const consentBlocked = evaluateRegistrationInvitationEligibility({
-      channel: 'email',
-      consentAllowed: false,
-      optOutActive: false,
-      frequencyOk: true,
-      humanApprovalGranted: true,
-      isExpired: false,
-      isRevoked: false,
-    })
-    expect(consentBlocked.code).toBe('consent_missing')
-
-    const optOutBlocked = evaluateRegistrationInvitationEligibility({
-      channel: 'email',
-      consentAllowed: true,
-      optOutActive: true,
-      frequencyOk: true,
-      humanApprovalGranted: true,
-      isExpired: false,
-      isRevoked: false,
-    })
-    expect(optOutBlocked.code).toBe('opt_out_active')
-
-    const humanApprovalBlocked = evaluateRegistrationInvitationEligibility({
-      channel: 'email',
-      consentAllowed: true,
-      optOutActive: false,
-      frequencyOk: true,
-      humanApprovalGranted: false,
-      isExpired: false,
-      isRevoked: false,
-    })
-    expect(humanApprovalBlocked.code).toBe('human_approval_required')
-
-    const frequencyBlocked = evaluateRegistrationInvitationEligibility({
-      channel: 'email',
-      consentAllowed: true,
-      optOutActive: false,
-      frequencyOk: false,
-      frequencyReason: 'Cooldown active for this channel.',
-      humanApprovalGranted: true,
-      isExpired: false,
-      isRevoked: false,
-    })
-    expect(frequencyBlocked.code).toBe('frequency_limit_reached')
+    expect(evaluateRegistrationInvitationEligibility({ channel: 'email', consentAllowed: false, optOutActive: false, frequencyOk: true, humanApprovalGranted: true, isExpired: false, isRevoked: false }).code).toBe('consent_missing')
+    expect(evaluateRegistrationInvitationEligibility({ channel: 'email', consentAllowed: true, optOutActive: true, frequencyOk: true, humanApprovalGranted: true, isExpired: false, isRevoked: false }).code).toBe('opt_out_active')
+    expect(evaluateRegistrationInvitationEligibility({ channel: 'email', consentAllowed: true, optOutActive: false, frequencyOk: true, humanApprovalGranted: false, isExpired: false, isRevoked: false }).code).toBe('human_approval_required')
+    expect(evaluateRegistrationInvitationEligibility({ channel: 'email', consentAllowed: true, optOutActive: false, frequencyOk: false, frequencyReason: 'Cooldown active for this channel.', humanApprovalGranted: true, isExpired: false, isRevoked: false }).code).toBe('frequency_limit_reached')
+    expect(evaluateRegistrationInvitationEligibility({ channel: 'email', consentAllowed: true, optOutActive: false, frequencyOk: true, humanApprovalGranted: true, isExpired: true, isRevoked: false }).code).toBe('invitation_expired')
+    expect(evaluateRegistrationInvitationEligibility({ channel: 'email', consentAllowed: true, optOutActive: false, frequencyOk: true, humanApprovalGranted: true, isExpired: false, isRevoked: true }).code).toBe('invitation_revoked')
   })
 
-  it('normalizes identifiers and keeps duplicate detection deterministic', () => {
+  it('normalizes identifiers and prevents duplicate identity collisions', () => {
     expect(normalizeEmail('  User.Name+Tag@Example.com  ')).toBe('username@example.com')
     expect(normalizePhone('+1 (555) 123-4567')).toBe('15551234567')
     expect(normalizeSourceHandle('  @DemoCreator  ')).toBe('democreator')
@@ -106,9 +87,13 @@ describe('registration profile handoff', () => {
     expect(candidate.stage).toBe('profile_created')
     expect(candidate.previousStage).toBe('registration_started')
     expect(candidate.newStage).toBe('profile_created')
+
+    const duplicateEmailA = normalizeEmail('  user.name+foo@example.com  ')
+    const duplicateEmailB = normalizeEmail('user.name@example.com')
+    expect(duplicateEmailA).toBe(duplicateEmailB)
   })
 
-  it('maps repository methods to the expected 3E RPC names and payload keys', async () => {
+  it('maps the repository RPC contract for the full 3E API and payload keys', async () => {
     expect(Object.keys(registrationHandoffRepository)).toEqual(expect.arrayContaining([
       'evaluateInvitationEligibility',
       'createInvitation',
@@ -133,13 +118,25 @@ describe('registration profile handoff', () => {
       p_frequency_ok: true,
       p_human_approval_granted: true,
     })).resolves.toHaveProperty('payload')
+
+    await expect(registrationHandoffRepository.recordInvitationSent({
+      p_invitation_id: 'invite-1',
+      p_sent_by: 'operator-1',
+      p_channel: 'email',
+    })).resolves.toHaveProperty('payload')
   })
 
-  it('parses the 3E migration and verifier SQL without syntax issues', async () => {
+  it('keeps the migration and verifier aligned to the exact canonical 3E RPC signatures', async () => {
     await loadModule()
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260911_000001_milestone_3e_registration_profile_handoff.sql'), 'utf8')
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3e_registration_profile_handoff.sql'), 'utf8')
 
+    for (const signature of REQUIRED_RPC_SIGNATURES) {
+      expect(migrationSql).toContain(signature)
+      expect(verifierSql).toContain(signature)
+    }
+
+    expect((verifierSql.match(/overall_status/g) ?? []).length).toBe(1)
     expect(() => parseSync(migrationSql)).not.toThrow()
     expect(() => parseSync(verifierSql)).not.toThrow()
     console.log('MIGRATION_3E_PARSE_OK')

@@ -4752,7 +4752,7 @@ function RegistrationInvitationsPage() {
           <button type="button" className="secondary-button" disabled>Reject invitation</button>
           <button type="button" className="ghost-button" disabled>Revoke invitation</button>
         </div>
-        <p className="note">Delivery remains deferred unless a configured provider is available and approved.</p>
+        <p className="note">Delivery remains deferred until a provider is configured and approved. Brilliant Directories actions are currently awaiting configuration.</p>
       </div>
     </div>
   )
@@ -4777,7 +4777,7 @@ function RegistrationHandoffsPage() {
           <li>Synchronization: disconnected</li>
           <li>Duplicate warning: none</li>
         </ul>
-        <button type="button" className="primary-button" disabled>Manual reconciliation</button>
+        <button type="button" className="primary-button" disabled>Manual reconciliation (awaiting Brilliant Directories configuration)</button>
       </div>
     </div>
   )
@@ -4803,6 +4803,7 @@ function RegistrationReviewQueuePage() {
           <button type="button" className="primary-button" disabled>Assign to review</button>
           <button type="button" className="ghost-button" disabled>Resolve duplicate</button>
         </div>
+        <p className="note">This queue is for deferred review while Brilliant Directories remains disconnected and not live-activated.</p>
       </div>
     </div>
   )
