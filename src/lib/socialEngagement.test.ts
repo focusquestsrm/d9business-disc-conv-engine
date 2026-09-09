@@ -150,6 +150,34 @@ describe('social engagement', () => {
     expect(filtered).toHaveLength(1)
   })
 
+  it('keeps required parameters before any defaulted parameters in Release 3C RPCs', () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260909_000001_milestone_3c_social_engagement.sql'), 'utf8')
+    const functionMatches = [...migrationSql.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+[^\(]+\(([^)]*?)\)\s+RETURNS/gim)]
+
+    for (const match of functionMatches) {
+      const params = match[1]
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+
+      let hasSeenDefaultedParam = false
+      for (const param of params) {
+        const hasDefault = /\bDEFAULT\b/i.test(param)
+        const isRequired = !hasDefault
+
+        if (hasSeenDefaultedParam && isRequired) {
+          throw new Error(`Release 3C RPC parameter ordering violation: ${match[0]}`)
+        }
+
+        if (hasDefault) {
+          hasSeenDefaultedParam = true
+        }
+      }
+    }
+
+    expect(functionMatches.length).toBeGreaterThan(0)
+  })
+
   it('parses the Release 3C migration and verifier SQL without syntax issues', async () => {
     await loadModule()
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260909_000001_milestone_3c_social_engagement.sql'), 'utf8')

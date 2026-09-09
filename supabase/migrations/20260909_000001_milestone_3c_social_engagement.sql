@@ -458,10 +458,10 @@ CREATE OR REPLACE FUNCTION public.ingest_engagement_message(
   p_tenant_id uuid,
   p_connection_id uuid,
   p_thread_id uuid,
-  p_prospect_id uuid DEFAULT NULL,
   p_direction text,
   p_platform text,
   p_external_message_id text,
+  p_prospect_id uuid DEFAULT NULL,
   p_external_thread_id text DEFAULT NULL,
   p_original_source text DEFAULT NULL,
   p_original_handle text DEFAULT NULL,
@@ -728,8 +728,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.record_engagement_outbound_activity(
   p_connection_id uuid,
   p_thread_id uuid,
-  p_prospect_id uuid DEFAULT NULL,
   p_platform text,
+  p_prospect_id uuid DEFAULT NULL,
   p_channel text DEFAULT 'email',
   p_status text DEFAULT 'sent',
   p_reason text DEFAULT NULL
