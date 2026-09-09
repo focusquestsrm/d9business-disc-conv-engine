@@ -28,6 +28,14 @@ const REQUIRED_RPC_SIGNATURES = [
   'public.get_registration_review_queue(uuid,text)',
 ] as const
 
+const normalizeSqlSignature = (sql: string) =>
+  sql
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*/g, ',')
+    .replace(/\s*\(\s*/g, '(')
+    .replace(/\s*\)\s*/g, ')')
+    .replace(/\s*;\s*$/g, '')
+
 describe('registration profile handoff', () => {
   it('tracks all seven lifecycle stages and valid/invalid transitions', () => {
     expect(REGISTRATION_LIFECYCLE_STAGES).toEqual([
@@ -131,9 +139,13 @@ describe('registration profile handoff', () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260911_000001_milestone_3e_registration_profile_handoff.sql'), 'utf8')
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3e_registration_profile_handoff.sql'), 'utf8')
 
+    const normalizedMigrationSql = normalizeSqlSignature(migrationSql)
+    const normalizedVerifierSql = normalizeSqlSignature(verifierSql)
+
     for (const signature of REQUIRED_RPC_SIGNATURES) {
-      expect(migrationSql).toContain(signature)
-      expect(verifierSql).toContain(signature)
+      const normalizedSignature = normalizeSqlSignature(signature)
+      expect(normalizedMigrationSql).toContain(normalizedSignature)
+      expect(normalizedVerifierSql).toContain(normalizedSignature)
     }
 
     expect((verifierSql.match(/overall_status/g) ?? []).length).toBe(1)
