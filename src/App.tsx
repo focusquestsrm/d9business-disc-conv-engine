@@ -82,6 +82,10 @@ const navGroups: NavGroup[] = [
     items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox' }, { label: 'AI Engagement Review', icon: Sparkles, to: '/ai-engagement-review' }, { label: 'Engagement Follow-ups', icon: CalendarCheck2, to: '/engagement-follow-ups' }, { label: 'Engagement Escalations', icon: AlertTriangle, to: '/engagement-escalations' }, { label: 'Engagement Connections', icon: Users, to: '/engagement-connections' }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
   },
   {
+    label: 'Registration',
+    items: [{ label: 'Registration Invitations', icon: FileText, to: '/registration-invitations' }, { label: 'Registration Handoffs', icon: Building2, to: '/registration-handoffs' }, { label: 'Registration Review Queue', icon: AlertTriangle, to: '/registration-review-queue' }, { label: 'Prospect Journey', icon: Users, to: '/prospect-journey' }],
+  },
+  {
     label: 'Integrations',
     items: [{ label: 'D9 Intelligence', icon: BarChart3, to: '/d9-intelligence', future: true }, { label: 'Brilliant Directories', icon: Building2, to: '/brilliant-directories', future: true }, { label: 'Social Connections', icon: Users, to: '/social-connections', future: true }, { label: 'Integration Health', icon: FileText, to: '/integrations' }],
   },
@@ -106,6 +110,7 @@ function AppRoot() {
       Discovery: false,
       Verification: false,
       'Social Engagement': false,
+      Registration: false,
       Integrations: false,
       Administration: false,
     }
@@ -533,6 +538,46 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <EngagementConnectionsPage isPlatformAdmin={isPlatformAdmin} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/registration-invitations"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <RegistrationInvitationsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/registration-handoffs"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <RegistrationHandoffsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/registration-review-queue"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <RegistrationReviewQueuePage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/prospect-journey"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <ProspectJourneyPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -4678,6 +4723,111 @@ function EngagementConnectionsPage({ isPlatformAdmin }: { isPlatformAdmin: boole
         <h2>Supported social platforms</h2>
         <p>Instagram, Facebook, LinkedIn, and Email are represented as approved or restricted connection records. Administrative controls remain limited to authorized roles.</p>
         <p>{isPlatformAdmin ? 'Administrative validation and disconnect actions are available.' : 'Only health and visibility states are available for non-admin users.'}</p>
+      </div>
+    </div>
+  )
+}
+
+function RegistrationInvitationsPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Registration</p>
+          <h1>Registration Invitations</h1>
+        </div>
+      </div>
+      <div className="panel">
+        <h2>Invitation review</h2>
+        <ul>
+          <li>Prospect: Aisha Patel</li>
+          <li>Channel: email</li>
+          <li>Eligibility: approved</li>
+          <li>Approval state: pending human review</li>
+          <li>Invitation status: awaiting_approval</li>
+          <li>Expiration: 2026-09-12T18:00:00Z</li>
+        </ul>
+        <div className="button-row">
+          <button type="button" className="primary-button" disabled>Approve invitation</button>
+          <button type="button" className="secondary-button" disabled>Reject invitation</button>
+          <button type="button" className="ghost-button" disabled>Revoke invitation</button>
+        </div>
+        <p className="note">Delivery remains deferred unless a configured provider is available and approved.</p>
+      </div>
+    </div>
+  )
+}
+
+function RegistrationHandoffsPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Registration</p>
+          <h1>Registration Handoffs</h1>
+        </div>
+      </div>
+      <div className="panel">
+        <h2>Brilliant Directories boundary</h2>
+        <ul>
+          <li>Prospect: Aisha Patel</li>
+          <li>Provider: Brilliant Directories</li>
+          <li>External member/profile ref: BD-88421 / profile-88421</li>
+          <li>Stage: profile_created</li>
+          <li>Synchronization: disconnected</li>
+          <li>Duplicate warning: none</li>
+        </ul>
+        <button type="button" className="primary-button" disabled>Manual reconciliation</button>
+      </div>
+    </div>
+  )
+}
+
+function RegistrationReviewQueuePage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Registration</p>
+          <h1>Registration Review Queue</h1>
+        </div>
+      </div>
+      <div className="panel">
+        <h2>Ambiguous or deferred records</h2>
+        <ul>
+          <li>Ambiguous duplicates: 1 candidate</li>
+          <li>Unmatched provider records: 2 pending</li>
+          <li>Failed sync events: 0</li>
+        </ul>
+        <div className="button-row">
+          <button type="button" className="primary-button" disabled>Assign to review</button>
+          <button type="button" className="ghost-button" disabled>Resolve duplicate</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProspectJourneyPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Registration</p>
+          <h1>Prospect Journey</h1>
+        </div>
+      </div>
+      <div className="panel">
+        <h2>Discovery-to-registration timeline</h2>
+        <ul>
+          <li>Discovery: inbound source captured</li>
+          <li>Social source: Instagram @thewellstudio</li>
+          <li>Outreach: initial response routed</li>
+          <li>Invitation: approval pending</li>
+          <li>Registration: started</li>
+          <li>Profile: created</li>
+          <li>Verification: pending</li>
+        </ul>
       </div>
     </div>
   )
