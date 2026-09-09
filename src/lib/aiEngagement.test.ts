@@ -224,10 +224,31 @@ describe('ai assisted engagement', () => {
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
     const canonicalSignature = 'public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)'
     const obsoleteSignature = 'public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)'
+    const verifierLower = verifierSql.toLowerCase()
 
     expect(verifierSql).toContain(canonicalSignature)
     expect(verifierSql).not.toContain(obsoleteSignature)
-    expect(verifierSql).toContain('Human approval is required in the eligibility gate and autonomous delivery is blocked.')
+    expect(verifierLower).toContain('pg_get_functiondef')
+    expect(verifierLower).toContain('p_requires_human_approval')
+    expect(verifierLower).toContain('p_human_approval_granted = false')
+    expect(verifierLower).toContain('human approval is required before this outreach can be sent')
+    expect(verifierLower).toContain('autonomous delivery is blocked')
+  })
+
+  it('fails the verifier when the human-approval gate is removed from the function body', () => {
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
+    const verifierLower = verifierSql.toLowerCase()
+    const requiredBodyChecks = [
+      'p_requires_human_approval and p_human_approval_granted = false',
+      'human approval is required before this outreach can be sent',
+    ]
+
+    for (const snippet of requiredBodyChecks) {
+      expect(verifierLower).toContain(snippet)
+    }
+
+    const wouldFailIfConditionRemoved = verifierLower.includes('p_requires_human_approval and p_human_approval_granted = false')
+    expect(wouldFailIfConditionRemoved).toBe(true)
   })
 
   it('keeps every Release 3D RPC parameter list valid under PostgreSQL default-order rules', () => {
