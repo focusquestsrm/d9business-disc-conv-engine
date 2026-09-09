@@ -110,10 +110,10 @@ WITH substantive_results AS (
          CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_approvals_append_only') THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_approvals_append_only') THEN 'Approval history is append-only and cannot be mutated.' ELSE 'Approval-history append-only trigger is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)', 'human_approval_required', 'EXISTS',
-         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'Human approval is required in the eligibility gate.' ELSE 'Human approval gate is missing.' END
+  SELECT 'FUNCTION', 'public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)', 'human_approval_required', 'EXISTS',
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'Human approval is required in the eligibility gate and autonomous delivery is blocked.' ELSE 'Human approval gate is missing or autonomous delivery is allowed.' END
 ), all_results AS (
   SELECT category, object_name, check_name, expected_result, actual_result, status, details FROM substantive_results
 ), overall_result AS (

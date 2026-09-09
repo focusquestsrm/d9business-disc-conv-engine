@@ -220,6 +220,16 @@ describe('ai assisted engagement', () => {
     expect(verifierSql).toContain('human_approval_required')
   })
 
+  it('requires every Release 3D verifier reference to the canonical human-approval RPC signature', () => {
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
+    const canonicalSignature = 'public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)'
+    const obsoleteSignature = 'public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)'
+
+    expect(verifierSql).toContain(canonicalSignature)
+    expect(verifierSql).not.toContain(obsoleteSignature)
+    expect(verifierSql).toContain('Human approval is required in the eligibility gate and autonomous delivery is blocked.')
+  })
+
   it('keeps every Release 3D RPC parameter list valid under PostgreSQL default-order rules', () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260910_000001_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
     const functionPattern = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.(?<name>[A-Za-z0-9_]+)\s*\((?<args>[^)]*)\)/gms
