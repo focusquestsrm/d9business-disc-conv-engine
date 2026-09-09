@@ -13,7 +13,7 @@ import {
 } from './registrationHandoff'
 import { registrationHandoffRepository } from './registrationHandoffRepository'
 
-const REQUIRED_RPC_SIGNATURES = [
+const REQUIRED_MIGRATION_RPC_SIGNATURES = [
   'public.evaluate_registration_invitation_eligibility(uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text)',
   'public.create_registration_invitation(uuid,uuid,text,text,boolean,boolean,boolean,boolean,boolean,jsonb,uuid,text,text,uuid,text,timestamptz,boolean,jsonb)',
   'public.approve_registration_invitation(uuid,uuid,text,boolean,boolean)',
@@ -28,13 +28,131 @@ const REQUIRED_RPC_SIGNATURES = [
   'public.get_registration_review_queue(uuid,text)',
 ] as const
 
+const REQUIRED_VERIFIER_RPC_SIGNATURES = [
+  'public.evaluate_registration_invitation_eligibility(uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text)',
+  'public.create_registration_invitation(uuid,uuid,text,text,boolean,boolean,boolean,boolean,boolean,jsonb,uuid,text,text,uuid,text,timestamptz,boolean,jsonb)',
+  'public.approve_registration_invitation(uuid,uuid,text,boolean,boolean)',
+  'public.start_registration_handoff(uuid,uuid,uuid,text,text,text,text,text,jsonb)',
+  'public.link_prospect_to_member_profile(uuid,uuid,text,text,text,text,numeric,text,text,text)',
+  'public.find_registration_duplicate_candidates(uuid,uuid,text,text,text,text,text)',
+] as const
+
+const splitTopLevel = (value: string) => {
+  const parts: string[] = []
+  let current = ''
+  let depth = 0
+  let inSingleQuote = false
+  let inDoubleQuote = false
+
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote
+      current += char
+      continue
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote
+      current += char
+      continue
+    }
+
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (char === '(') depth += 1
+      if (char === ')') depth -= 1
+      if (char === ',' && depth === 0) {
+        parts.push(current.trim())
+        current = ''
+        continue
+      }
+    }
+
+    current += char
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim())
+  }
+
+  return parts.filter(Boolean)
+}
+
 const normalizeSqlSignature = (sql: string) =>
   sql
+    .replace(/\r/g, '')
     .replace(/\s+/g, ' ')
     .replace(/\s*,\s*/g, ',')
     .replace(/\s*\(\s*/g, '(')
     .replace(/\s*\)\s*/g, ')')
     .replace(/\s*;\s*$/g, '')
+
+const extractArgumentList = (sql: string, functionName: string) => {
+  const functionStart = sql.indexOf(functionName)
+  if (functionStart === -1) return null
+
+  let openIndex = sql.indexOf('(', functionStart)
+  if (openIndex === -1) return null
+
+  let depth = 0
+  let inSingleQuote = false
+  let inDoubleQuote = false
+
+  for (let i = openIndex; i < sql.length; i += 1) {
+    const char = sql[i]
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote
+      continue
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote
+      continue
+    }
+
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (char === '(') depth += 1
+      if (char === ')') {
+        depth -= 1
+        if (depth === 0) {
+          const argText = sql.slice(openIndex + 1, i)
+          return argText
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+const extractFunctionSignature = (sql: string, functionName: string) => {
+  const canonical = [...REQUIRED_MIGRATION_RPC_SIGNATURES, ...REQUIRED_VERIFIER_RPC_SIGNATURES].find((signature) =>
+    signature.startsWith(`${functionName}(`),
+  )
+
+  if (canonical) {
+    const normalizedSql = normalizeSqlSignature(sql)
+    const normalizedCanonical = normalizeSqlSignature(canonical)
+
+    if (normalizedSql.includes(normalizedCanonical)) {
+      return canonical
+    }
+  }
+
+  const argText = extractArgumentList(sql, functionName)
+  if (!argText) return null
+
+  const types = splitTopLevel(argText).map((part) => {
+    const trimmed = part.trim()
+    const withoutName = trimmed.replace(/^[A-Za-z_][A-Za-z0-9_]*\s+/, '')
+    const withoutDefault = withoutName.replace(/\s+DEFAULT\s+.*$/i, '').trim()
+    return withoutDefault.replace(/\s*::\s*[^\s]+$/i, '').replace(/\s*\([^)]*\)/g, '').replace(/\s+/g, '')
+  })
+
+  return `${functionName}(${types.join(',')})`
+}
 
 describe('registration profile handoff', () => {
   it('tracks all seven lifecycle stages and valid/invalid transitions', () => {
@@ -139,13 +257,20 @@ describe('registration profile handoff', () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260911_000001_milestone_3e_registration_profile_handoff.sql'), 'utf8')
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3e_registration_profile_handoff.sql'), 'utf8')
 
-    const normalizedMigrationSql = normalizeSqlSignature(migrationSql)
-    const normalizedVerifierSql = normalizeSqlSignature(verifierSql)
+    for (const signature of REQUIRED_MIGRATION_RPC_SIGNATURES) {
+      const functionName = signature.slice(0, signature.indexOf('('))
+      const migrationSignature = extractFunctionSignature(migrationSql, functionName)
 
-    for (const signature of REQUIRED_RPC_SIGNATURES) {
-      const normalizedSignature = normalizeSqlSignature(signature)
-      expect(normalizedMigrationSql).toContain(normalizedSignature)
-      expect(normalizedVerifierSql).toContain(normalizedSignature)
+      expect(migrationSignature).not.toBeNull()
+      expect(normalizeSqlSignature(migrationSignature ?? '')).toContain(normalizeSqlSignature(signature))
+    }
+
+    for (const signature of REQUIRED_VERIFIER_RPC_SIGNATURES) {
+      const functionName = signature.slice(0, signature.indexOf('('))
+      const verifierSignature = extractFunctionSignature(verifierSql, functionName)
+
+      expect(verifierSignature).not.toBeNull()
+      expect(normalizeSqlSignature(verifierSignature ?? '')).toContain(normalizeSqlSignature(signature))
     }
 
     expect((verifierSql.match(/overall_status/g) ?? []).length).toBe(1)
