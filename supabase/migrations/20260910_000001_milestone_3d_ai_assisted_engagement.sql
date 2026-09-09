@@ -380,15 +380,15 @@ BEFORE UPDATE OR DELETE ON public.ai_engagement_approvals
 FOR EACH ROW EXECUTE FUNCTION public.block_ai_engagement_approval_mutation();
 
 CREATE OR REPLACE FUNCTION public.create_ai_engagement_suggestion(
-  p_tenant_id uuid,
   p_prospect_id uuid,
-  p_engagement_thread_id uuid DEFAULT NULL,
-  p_connection_id uuid DEFAULT NULL,
   p_platform text,
   p_channel text,
   p_suggestion_type text,
-  p_subject_line text DEFAULT NULL,
   p_content text,
+  p_tenant_id uuid DEFAULT NULL,
+  p_engagement_thread_id uuid DEFAULT NULL,
+  p_connection_id uuid DEFAULT NULL,
+  p_subject_line text DEFAULT NULL,
   p_status text DEFAULT 'generated',
   p_generation_source text DEFAULT 'template',
   p_personalization_fields jsonb DEFAULT '{}'::jsonb,
@@ -614,10 +614,10 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.evaluate_engagement_send_eligibility(
   p_prospect_id uuid,
-  p_connection_id uuid DEFAULT NULL,
-  p_thread_id uuid DEFAULT NULL,
   p_platform text,
   p_channel text,
+  p_connection_id uuid DEFAULT NULL,
+  p_thread_id uuid DEFAULT NULL,
   p_purpose text DEFAULT 'general_communication',
   p_consent_allowed boolean DEFAULT true,
   p_suppression_blocked boolean DEFAULT false,
@@ -665,13 +665,13 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.record_engagement_outreach_attempt(
-  p_tenant_id uuid,
-  p_suggestion_id uuid DEFAULT NULL,
   p_prospect_id uuid,
-  p_thread_id uuid DEFAULT NULL,
-  p_connection_id uuid DEFAULT NULL,
   p_platform text,
   p_channel text,
+  p_tenant_id uuid DEFAULT NULL,
+  p_suggestion_id uuid DEFAULT NULL,
+  p_thread_id uuid DEFAULT NULL,
+  p_connection_id uuid DEFAULT NULL,
   p_attempt_type text DEFAULT 'approval',
   p_status text DEFAULT 'proposed',
   p_attempted_by uuid DEFAULT NULL,
@@ -706,13 +706,13 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.record_manual_engagement_delivery(
-  p_tenant_id uuid,
   p_suggestion_id uuid,
   p_prospect_id uuid,
-  p_thread_id uuid DEFAULT NULL,
-  p_connection_id uuid DEFAULT NULL,
   p_platform text,
   p_channel text,
+  p_tenant_id uuid DEFAULT NULL,
+  p_thread_id uuid DEFAULT NULL,
+  p_connection_id uuid DEFAULT NULL,
   p_attempted_by uuid DEFAULT NULL,
   p_content_snapshot text DEFAULT NULL
 )
@@ -737,11 +737,11 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.classify_engagement_outcome(
-  p_tenant_id uuid,
   p_prospect_id uuid,
   p_thread_id uuid,
-  p_message_id uuid DEFAULT NULL,
   p_outcome text,
+  p_tenant_id uuid DEFAULT NULL,
+  p_message_id uuid DEFAULT NULL,
   p_confidence_score numeric DEFAULT 0,
   p_classification_source text DEFAULT 'manual',
   p_sensitivity_level text DEFAULT 'low',
@@ -797,13 +797,13 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.create_engagement_follow_up(
-  p_tenant_id uuid,
   p_prospect_id uuid,
+  p_due_at timestamptz,
+  p_reminder_type text,
+  p_tenant_id uuid DEFAULT NULL,
   p_thread_id uuid DEFAULT NULL,
   p_suggestion_id uuid DEFAULT NULL,
   p_outreach_attempt_id uuid DEFAULT NULL,
-  p_due_at timestamptz,
-  p_reminder_type text,
   p_priority text DEFAULT 'normal',
   p_status text DEFAULT 'pending',
   p_assigned_to uuid DEFAULT NULL,
@@ -880,14 +880,14 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.escalate_engagement_response(
-  p_tenant_id uuid,
-  p_prospect_id uuid DEFAULT NULL,
   p_thread_id uuid,
+  p_escalation_type text,
+  p_reason text,
+  p_tenant_id uuid DEFAULT NULL,
+  p_prospect_id uuid DEFAULT NULL,
   p_message_id uuid DEFAULT NULL,
   p_classification_id uuid DEFAULT NULL,
-  p_escalation_type text,
   p_severity text DEFAULT 'medium',
-  p_reason text,
   p_status text DEFAULT 'open',
   p_assigned_to uuid DEFAULT NULL,
   p_work_queue_item_id uuid DEFAULT NULL

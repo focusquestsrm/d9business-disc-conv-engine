@@ -220,6 +220,54 @@ describe('ai assisted engagement', () => {
     expect(verifierSql).toContain('human_approval_required')
   })
 
+  it('keeps every Release 3D RPC parameter list valid under PostgreSQL default-order rules', () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260910_000001_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
+    const functionPattern = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.(?<name>[A-Za-z0-9_]+)\s*\((?<args>[^)]*)\)/gms
+    const offenders: string[] = []
+    let match: RegExpExecArray | null
+
+    while ((match = functionPattern.exec(migrationSql))) {
+      const argsText = (match.groups?.args ?? '').trim()
+      if (!argsText) continue
+
+      const params: string[] = []
+      let current = ''
+      let parenDepth = 0
+
+      for (const char of argsText) {
+        if (char === '(') parenDepth += 1
+        if (char === ')' && parenDepth > 0) parenDepth -= 1
+        if (char === ',' && parenDepth === 0) {
+          if (current.trim()) {
+            params.push(current.trim())
+            current = ''
+          }
+          continue
+        }
+        current += char
+      }
+
+      if (current.trim()) {
+        params.push(current.trim())
+      }
+
+      let seenDefault = false
+      for (const [index, param] of params.entries()) {
+        if (/\bDEFAULT\b/i.test(param)) {
+          seenDefault = true
+          continue
+        }
+
+        if (seenDefault) {
+          offenders.push(`${match.groups?.name ?? 'unknown'}: required parameter "${param}" appears after a defaulted parameter at index ${index} (${params.join(', ')})`)
+          break
+        }
+      }
+    }
+
+    expect(offenders).toEqual([])
+  })
+
   it('parses the Release 3D migration and verifier SQL without syntax issues', async () => {
     await loadModule()
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260910_000001_milestone_3d_ai_assisted_engagement.sql'), 'utf8')

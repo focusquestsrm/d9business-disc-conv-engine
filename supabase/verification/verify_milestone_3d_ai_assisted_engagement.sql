@@ -80,20 +80,20 @@ WITH substantive_results AS (
          CASE WHEN to_regprocedure('public.block_ai_engagement_approval_mutation()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regprocedure('public.block_ai_engagement_approval_mutation()') IS NOT NULL THEN 'Approval history append-only protection exists.' ELSE 'Approval history append-only protection is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.create_ai_engagement_suggestion(uuid,uuid,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,uuid,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,uuid,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,uuid,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'AI suggestion creation RPC exists.' ELSE 'AI suggestion creation RPC is missing.' END
+  SELECT 'FUNCTION', 'public.create_ai_engagement_suggestion(uuid,text,text,text,text,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,text,text,text,text,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,text,text,text,text,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,text,text,text,text,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'AI suggestion creation RPC exists.' ELSE 'AI suggestion creation RPC is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'AI send eligibility RPC exists.' ELSE 'AI send eligibility RPC is missing.' END
+  SELECT 'FUNCTION', 'public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,text,text,uuid,uuid,text,boolean,boolean,boolean,boolean,boolean,boolean,text,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'AI send eligibility RPC exists.' ELSE 'AI send eligibility RPC is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.classify_engagement_outcome(uuid,uuid,uuid,text,text,text,jsonb)', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,uuid,text,text,text,jsonb)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,uuid,text,text,text,jsonb)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,uuid,text,text,text,jsonb)') IS NOT NULL THEN 'Outcome classification RPC exists.' ELSE 'Outcome classification RPC is missing.' END
+  SELECT 'FUNCTION', 'public.classify_engagement_outcome(uuid,uuid,text,uuid,uuid,numeric,text,text,jsonb,text,boolean,uuid)', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,text,uuid,uuid,numeric,text,text,jsonb,text,boolean,uuid)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,text,uuid,uuid,numeric,text,text,jsonb,text,boolean,uuid)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,text,uuid,uuid,numeric,text,text,jsonb,text,boolean,uuid)') IS NOT NULL THEN 'Outcome classification RPC exists.' ELSE 'Outcome classification RPC is missing.' END
   UNION ALL
   SELECT 'TRIGGER', 'public.ai_engagement_suggestions', 'approved_edit_guard_present', 'PRESENT',
          CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_suggestions_approved_edit_guard') THEN 'PRESENT' ELSE 'MISSING' END,
