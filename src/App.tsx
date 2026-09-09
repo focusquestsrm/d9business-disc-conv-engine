@@ -33,6 +33,7 @@ import {
   validateMembershipClaim,
 } from './lib/membershipVerification'
 import { CONSENT_CHANNELS, CONSENT_PURPOSES, CONSENT_STATUSES, evaluateOutreachEligibility, type ConsentChannel, type ConsentPurpose, type ConsentStatus } from './lib/consent'
+import { aiEngagementRepository } from './lib/aiEngagementRepository'
 import { consentRepository } from './lib/consentRepository'
 import { deriveWorkflowStatus, normalizeQuickCapturePayload, validateQuickCaptureForm } from './lib/quickCapture'
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
@@ -78,7 +79,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Social Engagement',
-    items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox' }, { label: 'Engagement Connections', icon: Users, to: '/engagement-connections' }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
+    items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox' }, { label: 'AI Engagement Review', icon: Sparkles, to: '/ai-engagement-review' }, { label: 'Engagement Follow-ups', icon: CalendarCheck2, to: '/engagement-follow-ups' }, { label: 'Engagement Escalations', icon: AlertTriangle, to: '/engagement-escalations' }, { label: 'Engagement Connections', icon: Users, to: '/engagement-connections' }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
   },
   {
     label: 'Integrations',
@@ -492,6 +493,36 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <SocialInboxPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ai-engagement-review"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <AIEngagementReviewPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/engagement-follow-ups"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <EngagementFollowUpsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/engagement-escalations"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <EngagementEscalationsPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -4219,6 +4250,416 @@ function SocialInboxPage() {
       <div className="panel empty-state">
         <h2>Inbox ready</h2>
         <p>Inbound responses are tracked per platform, preserved with their original source identifiers, and routed to review or the work queue when needed.</p>
+      </div>
+      <div className="panel table-panel" style={{ marginTop: '1rem' }}>
+        <div className="header-inline-actions">
+          <Link to="/ai-engagement-review" className="ghost-button">AI review queue</Link>
+          <Link to="/engagement-follow-ups" className="ghost-button">Follow-ups</Link>
+          <Link to="/engagement-escalations" className="ghost-button">Escalations</Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AIEngagementReviewPage() {
+  const [suggestions, setSuggestions] = useState<Array<{ id: string; prospect_id?: string | null; engagement_thread_id?: string | null; platform?: string | null; channel?: string | null; suggestion_type?: string | null; status?: string | null; content?: string | null; subject_line?: string | null; consent_result?: string | null; suppression_result?: string | null; frequency_result?: string | null; provider_capability?: string | null; sensitive_response_hold?: boolean; confidence_score?: number | null; approval_snapshot?: Record<string, unknown> | null }>>([])
+  const [timeline, setTimeline] = useState<Array<{ object_type: string; object_id: string; related_thread_id?: string | null; created_at?: string | null; status?: string | null; summary?: string | null }>>([])
+  const [filter, setFilter] = useState<'all' | 'needs_review' | 'approved' | 'draft' | 'blocked'>('all')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [permissionDenied, setPermissionDenied] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const result = await aiEngagementRepository.loadReviewQueue({ p_tenant_id: null })
+        if (!isMounted) return
+        if (!result.ok) {
+          setPermissionDenied(true)
+          return
+        }
+
+        const rows = result.data.length ? result.data : [
+          {
+            id: 'suggestion-a',
+            prospect_id: 'prospect-001',
+            engagement_thread_id: 'thread-001',
+            platform: 'linkedin',
+            channel: 'direct_message',
+            suggestion_type: 'direct_message',
+            status: 'needs_review',
+            subject_line: null,
+            content: 'Hi Aisha, thanks for your note. We would love to learn more and keep the conversation going.',
+            consent_result: 'granted',
+            suppression_result: 'clear',
+            frequency_result: 'within_limit',
+            provider_capability: 'provider_ready_stub',
+            sensitive_response_hold: false,
+            confidence_score: 0.82,
+          },
+          {
+            id: 'suggestion-b',
+            prospect_id: 'prospect-002',
+            engagement_thread_id: 'thread-002',
+            platform: 'email',
+            channel: 'email',
+            suggestion_type: 'email',
+            status: 'approved',
+            subject_line: 'Following up on Northside Studio',
+            content: 'Hello Daniel, thank you for the opportunity to continue the conversation.',
+            consent_result: 'granted',
+            suppression_result: 'clear',
+            frequency_result: 'within_limit',
+            provider_capability: 'provider_ready_stub',
+            sensitive_response_hold: false,
+            confidence_score: 0.9,
+            approval_snapshot: { approved_by: 'staff-user-001', approved_at: new Date().toISOString() },
+          },
+        ]
+        setSuggestions(rows)
+        setSelectedId((current) => current ?? rows[0]?.id ?? null)
+        const timelineResult = await aiEngagementRepository.loadEngagementTimeline({ p_tenant_id: null, p_prospect_id: rows[0]?.prospect_id ?? null })
+        if (timelineResult.ok) setTimeline(timelineResult.data)
+      } catch (errorValue) {
+        if (!isMounted) return
+        setError(errorValue instanceof Error ? errorValue.message : 'Unable to load AI review queue.')
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => { isMounted = false }
+  }, [])
+
+  const filteredSuggestions = suggestions.filter((suggestion) => {
+    if (filter === 'all') return true
+    return suggestion.status === filter
+  })
+
+  const selectedSuggestion = filteredSuggestions.find((suggestion) => suggestion.id === selectedId) ?? filteredSuggestions[0] ?? null
+
+  const updateSuggestionContent = (content: string) => {
+    setSuggestions((current) => current.map((row) => {
+      if (row.id !== selectedSuggestion?.id) return row
+      return { ...row, content, approval_snapshot: null }
+    }))
+  }
+
+  const applyStateChange = async (nextStatus: 'draft' | 'needs_review' | 'approved' | 'rejected' | 'cancelled') => {
+    if (!selectedSuggestion) return
+
+    if (nextStatus === 'approved') {
+      const approval = await aiEngagementRepository.approve({
+        p_suggestion_id: selectedSuggestion.id,
+        p_decided_by: 'staff-user-001',
+        p_decision_reason: 'Approved by staff review.',
+        p_eligibility_snapshot: { consent_result: selectedSuggestion.consent_result ?? 'granted', suppression_result: selectedSuggestion.suppression_result ?? 'clear', frequency_result: selectedSuggestion.frequency_result ?? 'within_limit' },
+        p_frequency_snapshot: { result: selectedSuggestion.frequency_result ?? 'within_limit' },
+        p_provider_capability_snapshot: { provider_capability: selectedSuggestion.provider_capability ?? 'provider_ready_stub', live_send_allowed: false },
+      })
+
+      if (approval.ok) {
+        setSuggestions((current) => current.map((row) => row.id === selectedSuggestion.id ? { ...row, status: 'approved', approval_snapshot: { approved_by: 'staff-user-001', approved_at: new Date().toISOString() } } : row))
+      }
+      return
+    }
+
+    if (nextStatus === 'rejected') {
+      await aiEngagementRepository.reject({ p_suggestion_id: selectedSuggestion.id, p_decided_by: 'staff-user-001', p_reason: 'Rejected after manual review.' })
+      setSuggestions((current) => current.map((row) => row.id === selectedSuggestion.id ? { ...row, status: 'rejected' } : row))
+      return
+    }
+
+    if (nextStatus === 'cancelled') {
+      await aiEngagementRepository.cancel({ p_suggestion_id: selectedSuggestion.id, p_cancelled_by: 'staff-user-001', p_reason: 'Cancelled by staff review.' })
+      setSuggestions((current) => current.map((row) => row.id === selectedSuggestion.id ? { ...row, status: 'cancelled' } : row))
+      return
+    }
+
+    if (nextStatus === 'draft') {
+      await aiEngagementRepository.updateDraft({ p_suggestion_id: selectedSuggestion.id, p_content: selectedSuggestion.content ?? '', p_status: 'draft' })
+      setSuggestions((current) => current.map((row) => row.id === selectedSuggestion.id ? { ...row, status: 'draft', approval_snapshot: null } : row))
+      return
+    }
+
+    await aiEngagementRepository.submitForReview({ p_suggestion_id: selectedSuggestion.id, p_reviewed_by: 'staff-user-001' })
+    setSuggestions((current) => current.map((row) => row.id === selectedSuggestion.id ? { ...row, status: 'needs_review' } : row))
+  }
+
+  if (permissionDenied) {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <div><p className="eyebrow">AI review</p><h1>Review queue</h1></div>
+        </div>
+        <div className="panel empty-state"><h2>Permission denied</h2><p>You do not have sufficient permission to review AI-assisted suggestions.</p></div>
+      </div>
+    )
+  }
+
+  if (loading) return <div className="page"><div className="panel empty-state"><h2>Loading review queue</h2><p>Restoring AI-assisted engagement suggestions and approval state.</p></div></div>
+  if (error) return <div className="page"><div className="panel empty-state"><h2>Unable to load queue</h2><p>{error}</p></div></div>
+  if (!filteredSuggestions.length) return <div className="page"><div className="panel empty-state"><h2>No suggestions found</h2><p>AI-assisted suggestions will appear here once new drafts are generated.</p></div></div>
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">AI-assisted engagement</p>
+          <h1>AI Engagement Review</h1>
+        </div>
+        <div className="header-inline-actions">
+          <Link to="/social-inbox" className="ghost-button">Social Inbox</Link>
+          <Link to="/prospects" className="ghost-button">Prospect details</Link>
+        </div>
+      </div>
+
+      <div className="panel table-panel">
+        <div className="header-inline-actions">
+          <button type="button" className="ghost-button" onClick={() => setFilter('all')}>All</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('needs_review')}>Needs review</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('approved')}>Approved</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('draft')}>Draft</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('blocked')}>Blocked</button>
+        </div>
+      </div>
+
+      <div className="stacked-layout">
+        <aside className="panel table-panel" style={{ minWidth: '260px' }}>
+          {filteredSuggestions.map((suggestion) => (
+            <button key={suggestion.id} type="button" className="list-row" style={{ width: '100%', textAlign: 'left', border: suggestion.id === selectedSuggestion?.id ? '1px solid #5b8def' : '1px solid transparent' }} onClick={() => setSelectedId(suggestion.id)}>
+              <div>
+                <strong>{suggestion.prospect_id ?? 'Prospect'}</strong>
+                <span>{suggestion.platform} · {suggestion.channel}</span>
+              </div>
+              <span className="pill neutral">{suggestion.status ?? 'draft'}</span>
+            </button>
+          ))}
+        </aside>
+
+        <article className="panel" style={{ flex: 1 }}>
+          {selectedSuggestion && (
+            <>
+              <div className="page-header" style={{ alignItems: 'flex-start' }}>
+                <div>
+                  <p className="eyebrow">Thread {selectedSuggestion.engagement_thread_id ?? '—'}</p>
+                  <h2>{selectedSuggestion.subject_line ?? 'Suggestion review'}</h2>
+                </div>
+                <span className="pill neutral">{selectedSuggestion.status ?? 'draft'}</span>
+              </div>
+
+              <div className="two-column-grid" style={{ marginBottom: '1rem' }}>
+                <div className="panel muted-panel">
+                  <h3>Context</h3>
+                  <p><strong>Source:</strong> {selectedSuggestion.platform} / {selectedSuggestion.channel}</p>
+                  <p><strong>Prospect:</strong> {selectedSuggestion.prospect_id ?? 'Unknown prospect'}</p>
+                  <p><strong>Thread:</strong> {selectedSuggestion.engagement_thread_id ?? 'No thread linked'}</p>
+                  <p><strong>Consent result:</strong> {selectedSuggestion.consent_result ?? 'granted'}</p>
+                  <p><strong>Suppression result:</strong> {selectedSuggestion.suppression_result ?? 'clear'}</p>
+                  <p><strong>Frequency result:</strong> {selectedSuggestion.frequency_result ?? 'within_limit'}</p>
+                  <p><strong>Provider capability:</strong> {selectedSuggestion.provider_capability ?? 'provider_ready_stub'}</p>
+                  <p><strong>Sensitive response:</strong> {selectedSuggestion.sensitive_response_hold ? 'Held' : 'Allowed'}</p>
+                </div>
+                <div className="panel muted-panel">
+                  <h3>Approval evidence</h3>
+                  <p><strong>Confidence:</strong> {selectedSuggestion.confidence_score ?? 0.75}</p>
+                  <p><strong>Approval snapshot:</strong> {selectedSuggestion.approval_snapshot ? 'Stored' : 'Not yet approved'}</p>
+                  <p><strong>AI provider status:</strong> deferred / suggestion-only</p>
+                  <p><strong>Delivery provider status:</strong> deferred / not live</p>
+                  <p><strong>Approval gate:</strong> requires human review</p>
+                </div>
+              </div>
+
+              <label className="field" htmlFor="ai-engagement-content">
+                <span>Content</span>
+                <textarea id="ai-engagement-content" value={selectedSuggestion.content ?? ''} onChange={(event) => updateSuggestionContent(event.target.value)} rows={6} />
+              </label>
+
+              <div className="header-inline-actions" style={{ marginTop: '1rem' }}>
+                <button type="button" className="primary-button" onClick={() => void applyStateChange('approved')}>Approve suggestion</button>
+                <button type="button" className="ghost-button" onClick={() => void applyStateChange('needs_review')}>Submit for review</button>
+                <button type="button" className="ghost-button" onClick={() => void applyStateChange('draft')}>Request changes</button>
+                <button type="button" className="ghost-button" onClick={() => void applyStateChange('rejected')}>Reject</button>
+                <button type="button" className="ghost-button" onClick={() => void applyStateChange('cancelled')}>Cancel</button>
+                <button type="button" className="ghost-button" onClick={async () => {
+                  if (!selectedSuggestion) return
+                  await aiEngagementRepository.createFollowUp({
+                    p_tenant_id: null,
+                    p_prospect_id: selectedSuggestion.prospect_id ?? 'prospect-001',
+                    p_thread_id: selectedSuggestion.engagement_thread_id ?? null,
+                    p_suggestion_id: selectedSuggestion.id,
+                    p_due_at: new Date(Date.now() + 86400000).toISOString(),
+                    p_reminder_type: 'follow_up',
+                    p_priority: 'normal',
+                    p_status: 'pending',
+                    p_reason: 'Follow-up after AI suggestion review.',
+                    p_created_by: 'staff-user-001',
+                  })
+                }}>Create follow-up</button>
+              </div>
+
+              <div className="panel muted-panel" style={{ marginTop: '1rem' }}>
+                <h3>Audit & timeline</h3>
+                {timeline.length ? (
+                  <ul>
+                    {timeline.map((item) => (
+                      <li key={`${item.object_type}-${item.object_id}`}>
+                        <strong>{item.object_type}</strong> · {item.status ?? 'unknown'} · {new Date(item.created_at ?? Date.now()).toLocaleString()}<br />
+                        {item.summary}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No timeline evidence captured yet.</p>
+                )}
+              </div>
+            </>
+          )}
+        </article>
+      </div>
+    </div>
+  )
+}
+
+function EngagementFollowUpsPage() {
+  const [items, setItems] = useState<Array<{ id: string; prospect_id?: string | null; thread_id?: string | null; due_at?: string | null; reminder_type?: string | null; priority?: string | null; status?: string | null; assigned_to?: string | null; reason?: string | null }>>([])
+  const [filter, setFilter] = useState<'all' | 'due' | 'upcoming' | 'overdue' | 'snoozed' | 'completed'>('all')
+
+  useEffect(() => {
+    const seed: typeof items = [
+      { id: 'followup-1', prospect_id: 'prospect-001', thread_id: 'thread-001', due_at: new Date(Date.now() - 3600000).toISOString(), reminder_type: 'follow_up', priority: 'high', status: 'overdue', assigned_to: 'staff-user-001', reason: 'Awaiting approval follow-up.' },
+      { id: 'followup-2', prospect_id: 'prospect-002', thread_id: 'thread-002', due_at: new Date(Date.now() + 86400000).toISOString(), reminder_type: 'reply_wait', priority: 'normal', status: 'upcoming', assigned_to: 'staff-user-002', reason: 'Awaiting prospect response.' },
+      { id: 'followup-3', prospect_id: 'prospect-003', thread_id: 'thread-003', due_at: new Date(Date.now() + 7200000).toISOString(), reminder_type: 'consent_review', priority: 'low', status: 'snoozed', assigned_to: 'staff-user-003', reason: 'Consent check follow-up.' },
+      { id: 'followup-4', prospect_id: 'prospect-004', thread_id: 'thread-004', due_at: new Date(Date.now() - 1800000).toISOString(), reminder_type: 'manual_review', priority: 'normal', status: 'completed', assigned_to: 'staff-user-001', reason: 'Completed after manual review.' },
+    ]
+    setItems(seed)
+  }, [])
+
+  const filteredItems = items.filter((item) => {
+    if (filter === 'all') return true
+    return item.status === filter
+  })
+
+  const setStatus = async (id: string, nextStatus: 'snoozed' | 'completed' | 'cancelled') => {
+    if (nextStatus === 'snoozed') {
+      await aiEngagementRepository.snoozeFollowUp({ p_reminder_id: id, p_snoozed_until: new Date(Date.now() + 86400000).toISOString(), p_assigned_to: 'staff-user-001' })
+    } else if (nextStatus === 'completed') {
+      await aiEngagementRepository.completeFollowUp({ p_reminder_id: id, p_completed_by: 'staff-user-001' })
+    }
+    setItems((current) => current.map((item) => item.id === id ? { ...item, status: nextStatus } : item))
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div><p className="eyebrow">AI-assisted engagement</p><h1>Engagement Follow-ups</h1></div>
+      </div>
+      <div className="panel table-panel">
+        <div className="header-inline-actions">
+          <button type="button" className="ghost-button" onClick={() => setFilter('all')}>All</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('due')}>Due</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('upcoming')}>Upcoming</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('overdue')}>Overdue</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('snoozed')}>Snoozed</button>
+          <button type="button" className="ghost-button" onClick={() => setFilter('completed')}>Completed</button>
+        </div>
+      </div>
+      <div className="panel table-panel">
+        {filteredItems.length ? (
+          <table className="data-table">
+            <thead><tr><th>Prospect</th><th>Thread</th><th>Due</th><th>Priority</th><th>Assigned</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              {filteredItems.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.prospect_id ?? 'Unknown'}</td>
+                  <td>{item.thread_id ?? 'No thread'}</td>
+                  <td>{item.due_at ? new Date(item.due_at).toLocaleString() : 'TBD'}</td>
+                  <td><span className="pill neutral">{item.priority ?? 'normal'}</span></td>
+                  <td>{item.assigned_to ?? 'Unassigned'}</td>
+                  <td><span className="pill neutral">{item.status ?? 'pending'}</span></td>
+                  <td>
+                    <div className="header-inline-actions">
+                      <button type="button" className="ghost-button" onClick={() => void setStatus(item.id, 'snoozed')}>Snooze</button>
+                      <button type="button" className="ghost-button" onClick={() => void setStatus(item.id, 'completed')}>Complete</button>
+                      <button type="button" className="ghost-button" onClick={() => setItems((current) => current.filter((row) => row.id !== item.id))}>Cancel</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="empty-state"><h2>No follow-ups</h2><p>No outstanding follow-up records are currently queued.</p></div>
+        )}
+      </div>
+      <div className="panel" style={{ marginTop: '1rem' }}>
+        <h3>Create eligible suggestion</h3>
+        <button type="button" className="primary-button" onClick={async () => {
+          await aiEngagementRepository.generateSuggestion({
+            p_tenant_id: null,
+            p_prospect_id: 'prospect-100',
+            p_platform: 'email',
+            p_channel: 'email',
+            p_suggestion_type: 'email',
+            p_business_name: 'Northside Studio',
+            p_prospect_name: 'Aisha',
+            p_handle: '@northside',
+            p_content: 'Hi Aisha, thanks again for the conversation. We would love to continue.',
+            p_created_by: 'staff-user-001',
+          })
+        }}>New eligible suggestion</button>
+      </div>
+    </div>
+  )
+}
+
+function EngagementEscalationsPage() {
+  const [items, setItems] = useState<Array<{ id: string; prospect_id?: string | null; thread_id?: string | null; escalation_type?: string | null; severity?: string | null; reason?: string | null; status?: string | null; assigned_to?: string | null; original_message?: string | null; uncertainty?: string | null }>>([])
+
+  useEffect(() => {
+    setItems([
+      { id: 'escalation-1', prospect_id: 'prospect-001', thread_id: 'thread-001', escalation_type: 'sensitive_content', severity: 'high', reason: 'Sensitive response flagged in conversation.', status: 'open', assigned_to: 'staff-user-002', original_message: 'I do not want to be contacted again. This feels unsafe.', uncertainty: 'moderate', },
+      { id: 'escalation-2', prospect_id: 'prospect-004', thread_id: 'thread-004', escalation_type: 'low_confidence', severity: 'medium', reason: 'The incoming reply was ambiguous.', status: 'queued', assigned_to: 'staff-user-003', original_message: 'Can you send more?', uncertainty: 'high', },
+    ])
+  }, [])
+
+  const resolve = async (id: string) => {
+    await aiEngagementRepository.resolveEscalation({ p_escalation_id: id, p_resolved_by: 'staff-user-001', p_resolution_notes: 'Resolved by staff review.' })
+    setItems((current) => current.map((item) => item.id === id ? { ...item, status: 'resolved' } : item))
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div><p className="eyebrow">AI-assisted engagement</p><h1>Engagement Escalations</h1></div>
+      </div>
+      <div className="panel table-panel">
+        {items.length ? (
+          <table className="data-table">
+            <thead><tr><th>Type</th><th>Severity</th><th>Prospect</th><th>Thread</th><th>Reason</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.escalation_type}</td>
+                  <td><span className="pill neutral">{item.severity}</span></td>
+                  <td>{item.prospect_id ?? 'Unknown'}</td>
+                  <td>{item.thread_id ?? 'No thread'}</td>
+                  <td>{item.reason}</td>
+                  <td>{item.status}</td>
+                  <td><button type="button" className="ghost-button" onClick={() => void resolve(item.id)}>Resolve</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="empty-state"><h2>No escalations</h2><p>No escalation records currently require action.</p></div>
+        )}
       </div>
     </div>
   )
