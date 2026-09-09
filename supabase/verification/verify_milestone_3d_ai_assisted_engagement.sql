@@ -40,6 +40,46 @@ WITH substantive_results AS (
          CASE WHEN to_regclass('public.ai_prompt_templates') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regclass('public.ai_prompt_templates') IS NOT NULL THEN 'public.ai_prompt_templates exists.' ELSE 'public.ai_prompt_templates is missing.' END
   UNION ALL
+  SELECT 'TABLE', 'public.consent_preferences', 'release_3b_dependency', 'EXISTS',
+         CASE WHEN to_regclass('public.consent_preferences') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regclass('public.consent_preferences') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regclass('public.consent_preferences') IS NOT NULL THEN 'Release 3B consent preferences are available for evaluation.' ELSE 'Release 3B consent dependency is missing.' END
+  UNION ALL
+  SELECT 'TABLE', 'public.engagement_threads', 'release_3c_dependency', 'EXISTS',
+         CASE WHEN to_regclass('public.engagement_threads') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regclass('public.engagement_threads') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regclass('public.engagement_threads') IS NOT NULL THEN 'Release 3C thread linkage is available.' ELSE 'Release 3C thread linkage is missing.' END
+  UNION ALL
+  SELECT 'TABLE', 'public.engagement_messages', 'release_3c_dependency', 'EXISTS',
+         CASE WHEN to_regclass('public.engagement_messages') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regclass('public.engagement_messages') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regclass('public.engagement_messages') IS NOT NULL THEN 'Release 3C message linkage is available.' ELSE 'Release 3C message linkage is missing.' END
+  UNION ALL
+  SELECT 'TABLE', 'public.engagement_work_queue_items', 'release_3c_dependency', 'EXISTS',
+         CASE WHEN to_regclass('public.engagement_work_queue_items') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regclass('public.engagement_work_queue_items') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regclass('public.engagement_work_queue_items') IS NOT NULL THEN 'Release 3C work queue integration exists.' ELSE 'Release 3C work queue integration is missing.' END
+  UNION ALL
+  SELECT 'FUNCTION', 'public.block_edited_approved_suggestion()', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.block_edited_approved_suggestion()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.block_edited_approved_suggestion()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.block_edited_approved_suggestion()') IS NOT NULL THEN 'Approved suggestion edit guard exists.' ELSE 'Approved suggestion edit guard is missing.' END
+  UNION ALL
+  SELECT 'FUNCTION', 'public.enforce_ai_engagement_delivery_gate()', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.enforce_ai_engagement_delivery_gate()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.enforce_ai_engagement_delivery_gate()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.enforce_ai_engagement_delivery_gate()') IS NOT NULL THEN 'Delivery gate enforcement exists.' ELSE 'Delivery gate enforcement is missing.' END
+  UNION ALL
+  SELECT 'FUNCTION', 'public.enforce_ai_engagement_frequency_limit()', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.enforce_ai_engagement_frequency_limit()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.enforce_ai_engagement_frequency_limit()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.enforce_ai_engagement_frequency_limit()') IS NOT NULL THEN 'Frequency enforcement exists.' ELSE 'Frequency enforcement is missing.' END
+  UNION ALL
+  SELECT 'FUNCTION', 'public.block_ai_engagement_approval_mutation()', 'append_only_protection', 'EXISTS',
+         CASE WHEN to_regprocedure('public.block_ai_engagement_approval_mutation()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.block_ai_engagement_approval_mutation()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.block_ai_engagement_approval_mutation()') IS NOT NULL THEN 'Approval history append-only protection exists.' ELSE 'Approval history append-only protection is missing.' END
+  UNION ALL
   SELECT 'FUNCTION', 'public.create_ai_engagement_suggestion(uuid,uuid,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)', 'function_exists', 'EXISTS',
          CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,uuid,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
          CASE WHEN to_regprocedure('public.create_ai_engagement_suggestion(uuid,uuid,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb,text,text,uuid,text,numeric,jsonb,jsonb,text,uuid)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
@@ -54,6 +94,26 @@ WITH substantive_results AS (
          CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,uuid,text,text,text,jsonb)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
          CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,uuid,text,text,text,jsonb)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regprocedure('public.classify_engagement_outcome(uuid,uuid,uuid,text,text,text,jsonb)') IS NOT NULL THEN 'Outcome classification RPC exists.' ELSE 'Outcome classification RPC is missing.' END
+  UNION ALL
+  SELECT 'TRIGGER', 'public.ai_engagement_suggestions', 'approved_edit_guard_present', 'PRESENT',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_suggestions_approved_edit_guard') THEN 'PRESENT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_suggestions_approved_edit_guard') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_suggestions_approved_edit_guard') THEN 'Approved edit guard trigger is present.' ELSE 'Approved edit guard trigger is missing.' END
+  UNION ALL
+  SELECT 'TRIGGER', 'public.engagement_outreach_attempts', 'delivery_without_approval_blocked', 'PRESENT',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'engagement_outreach_attempts_delivery_gate') THEN 'PRESENT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'engagement_outreach_attempts_delivery_gate') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'engagement_outreach_attempts_delivery_gate') THEN 'Delivery attempts without approval are blocked at the database layer.' ELSE 'Delivery-without-approval trigger is missing.' END
+  UNION ALL
+  SELECT 'TRIGGER', 'public.ai_engagement_approvals', 'approval_history_append_only', 'PRESENT',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_approvals_append_only') THEN 'PRESENT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_approvals_append_only') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ai_engagement_approvals_append_only') THEN 'Approval history is append-only and cannot be mutated.' ELSE 'Approval-history append-only trigger is missing.' END
+  UNION ALL
+  SELECT 'FUNCTION', 'public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)', 'human_approval_required', 'EXISTS',
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.evaluate_engagement_send_eligibility(uuid,uuid,uuid,text,text,text,boolean,boolean,boolean,boolean,boolean,boolean,boolean)') IS NOT NULL THEN 'Human approval is required in the eligibility gate.' ELSE 'Human approval gate is missing.' END
 ), all_results AS (
   SELECT category, object_name, check_name, expected_result, actual_result, status, details FROM substantive_results
 ), overall_result AS (

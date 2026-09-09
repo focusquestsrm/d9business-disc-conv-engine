@@ -208,6 +208,18 @@ describe('ai assisted engagement', () => {
     expect(cancelled.ok).toBe(true)
   })
 
+  it('requires database enforcement for approval, delivery, and append-only history protection', async () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260910_000001_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
+
+    expect(migrationSql).toContain('block_edited_approved_suggestion')
+    expect(migrationSql).toContain('enforce_ai_engagement_delivery_gate')
+    expect(migrationSql).toContain('block_ai_engagement_approval_mutation')
+    expect(verifierSql).toContain('approval_history_append_only')
+    expect(verifierSql).toContain('delivery_without_approval_blocked')
+    expect(verifierSql).toContain('human_approval_required')
+  })
+
   it('parses the Release 3D migration and verifier SQL without syntax issues', async () => {
     await loadModule()
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260910_000001_milestone_3d_ai_assisted_engagement.sql'), 'utf8')

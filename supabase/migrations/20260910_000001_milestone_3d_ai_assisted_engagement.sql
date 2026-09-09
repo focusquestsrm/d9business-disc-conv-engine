@@ -227,6 +227,158 @@ CREATE TRIGGER engagement_frequency_rules_set_updated_at
 BEFORE UPDATE ON public.engagement_frequency_rules
 FOR EACH ROW EXECUTE FUNCTION public.set_ai_engagement_updated_at();
 
+CREATE OR REPLACE FUNCTION public.block_edited_approved_suggestion()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.status = 'approved' AND NEW.status = 'approved' AND NEW.content IS DISTINCT FROM OLD.content THEN
+      RAISE EXCEPTION 'Approved suggestions cannot be edited after approval. Create a new draft instead.';
+    END IF;
+
+    IF OLD.status IN ('rejected', 'cancelled') AND NEW.status IN ('approved', 'pending_delivery', 'delivered', 'needs_review', 'generated', 'draft') THEN
+      RAISE EXCEPTION 'Rejected or cancelled suggestions cannot be reactivated through direct mutation.';
+    END IF;
+
+    IF NEW.status IN ('pending_delivery', 'delivered') AND OLD.status <> 'approved' THEN
+      RAISE EXCEPTION 'Only approved suggestions may advance to delivery.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS ai_engagement_suggestions_approved_edit_guard ON public.ai_engagement_suggestions;
+CREATE TRIGGER ai_engagement_suggestions_approved_edit_guard
+BEFORE UPDATE ON public.ai_engagement_suggestions
+FOR EACH ROW EXECUTE FUNCTION public.block_edited_approved_suggestion();
+
+CREATE OR REPLACE FUNCTION public.enforce_ai_engagement_delivery_gate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_suggestion public.ai_engagement_suggestions;
+BEGIN
+  IF NEW.status IN ('approved_pending_delivery', 'manually_sent', 'provider_accepted', 'delivered') THEN
+    IF NEW.suggestion_id IS NULL THEN
+      RAISE EXCEPTION 'Delivery attempts require a suggestion_id.';
+    END IF;
+
+    SELECT * INTO v_suggestion
+    FROM public.ai_engagement_suggestions
+    WHERE id = NEW.suggestion_id;
+
+    IF v_suggestion.id IS NULL THEN
+      RAISE EXCEPTION 'Delivery attempt references a missing suggestion.';
+    END IF;
+
+    IF v_suggestion.status <> 'approved' THEN
+      RAISE EXCEPTION 'Only approved suggestions may be delivered.';
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM public.ai_engagement_approvals a
+      WHERE a.suggestion_id = NEW.suggestion_id
+        AND a.decision = 'approved'
+    ) THEN
+      RAISE EXCEPTION 'Delivery requires a recorded approval history.';
+    END IF;
+
+    IF COALESCE(NEW.eligibility_result, '') <> 'eligible' THEN
+      RAISE EXCEPTION 'Delivery requires an eligible evaluation result.';
+    END IF;
+
+    IF NEW.status = 'delivered' AND COALESCE(NEW.provider_status, '') NOT IN ('delivered', 'accepted', 'sent', 'read') THEN
+      RAISE EXCEPTION 'Delivered outreach must include provider confirmation.';
+    END IF;
+  END IF;
+
+  IF NEW.status = 'blocked' AND COALESCE(NEW.block_reason, '') = '' THEN
+    RAISE EXCEPTION 'Blocked attempts require a block reason.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS engagement_outreach_attempts_delivery_gate ON public.engagement_outreach_attempts;
+CREATE TRIGGER engagement_outreach_attempts_delivery_gate
+BEFORE INSERT OR UPDATE ON public.engagement_outreach_attempts
+FOR EACH ROW EXECUTE FUNCTION public.enforce_ai_engagement_delivery_gate();
+
+CREATE OR REPLACE FUNCTION public.enforce_ai_engagement_frequency_limit()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_rule public.engagement_frequency_rules;
+  v_attempt_count integer;
+BEGIN
+  IF NEW.status NOT IN ('approved_pending_delivery', 'manually_sent', 'provider_accepted', 'delivered') THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT * INTO v_rule
+  FROM public.engagement_frequency_rules
+  WHERE active = true
+    AND (
+      (channel IS NULL AND platform IS NULL)
+      OR (channel = NEW.channel AND platform IS NULL)
+      OR (channel IS NULL AND platform = NEW.platform)
+      OR (channel = NEW.channel AND platform = NEW.platform)
+    )
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF v_rule.id IS NOT NULL THEN
+    SELECT COUNT(*) INTO v_attempt_count
+    FROM public.engagement_outreach_attempts
+    WHERE prospect_id = NEW.prospect_id
+      AND channel = NEW.channel
+      AND platform = NEW.platform
+      AND status IN ('approved_pending_delivery', 'manually_sent', 'provider_accepted', 'delivered')
+      AND created_at >= NOW() - ((v_rule.window_interval || ' days')::interval);
+
+    IF v_attempt_count >= v_rule.max_attempts THEN
+      RAISE EXCEPTION 'Frequency limit reached for prospect/channel %.', NEW.channel;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS engagement_outreach_attempts_frequency_guard ON public.engagement_outreach_attempts;
+CREATE TRIGGER engagement_outreach_attempts_frequency_guard
+BEFORE INSERT OR UPDATE ON public.engagement_outreach_attempts
+FOR EACH ROW EXECUTE FUNCTION public.enforce_ai_engagement_frequency_limit();
+
+CREATE OR REPLACE FUNCTION public.block_ai_engagement_approval_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+  RAISE EXCEPTION 'AI engagement approval history is append-only and cannot be edited or deleted.';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS ai_engagement_approvals_append_only ON public.ai_engagement_approvals;
+CREATE TRIGGER ai_engagement_approvals_append_only
+BEFORE UPDATE OR DELETE ON public.ai_engagement_approvals
+FOR EACH ROW EXECUTE FUNCTION public.block_ai_engagement_approval_mutation();
+
 CREATE OR REPLACE FUNCTION public.create_ai_engagement_suggestion(
   p_tenant_id uuid,
   p_prospect_id uuid,
