@@ -973,21 +973,45 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public, auth
 AS $$
-  SELECT 'suggestion'::text, id, engagement_thread_id, generated_at, status, content
-  FROM public.ai_engagement_suggestions
-  WHERE (p_tenant_id IS NULL OR tenant_id = p_tenant_id)
-    AND (p_prospect_id IS NULL OR prospect_id = p_prospect_id)
-  UNION ALL
-  SELECT 'attempt', id, thread_id, attempted_at, status, COALESCE(content_snapshot, 'outreach attempt')
-  FROM public.engagement_outreach_attempts
-  WHERE (p_tenant_id IS NULL OR tenant_id = p_tenant_id)
-    AND (p_prospect_id IS NULL OR prospect_id = p_prospect_id)
-  UNION ALL
-  SELECT 'reminder', id, thread_id, created_at, status, reason
-  FROM public.engagement_follow_up_reminders
-  WHERE (p_tenant_id IS NULL OR tenant_id = p_tenant_id)
-    AND (p_prospect_id IS NULL OR prospect_id = p_prospect_id)
-  ORDER BY created_at DESC;
+  WITH timeline AS (
+    SELECT 'suggestion'::text AS object_type,
+           public.ai_engagement_suggestions.id AS object_id,
+           public.ai_engagement_suggestions.engagement_thread_id AS related_thread_id,
+           public.ai_engagement_suggestions.generated_at AS created_at,
+           public.ai_engagement_suggestions.status AS status,
+           public.ai_engagement_suggestions.content AS summary
+    FROM public.ai_engagement_suggestions
+    WHERE (p_tenant_id IS NULL OR public.ai_engagement_suggestions.tenant_id = p_tenant_id)
+      AND (p_prospect_id IS NULL OR public.ai_engagement_suggestions.prospect_id = p_prospect_id)
+    UNION ALL
+    SELECT 'attempt'::text AS object_type,
+           public.engagement_outreach_attempts.id AS object_id,
+           public.engagement_outreach_attempts.thread_id AS related_thread_id,
+           public.engagement_outreach_attempts.attempted_at AS created_at,
+           public.engagement_outreach_attempts.status AS status,
+           COALESCE(public.engagement_outreach_attempts.content_snapshot, 'outreach attempt') AS summary
+    FROM public.engagement_outreach_attempts
+    WHERE (p_tenant_id IS NULL OR public.engagement_outreach_attempts.tenant_id = p_tenant_id)
+      AND (p_prospect_id IS NULL OR public.engagement_outreach_attempts.prospect_id = p_prospect_id)
+    UNION ALL
+    SELECT 'reminder'::text AS object_type,
+           public.engagement_follow_up_reminders.id AS object_id,
+           public.engagement_follow_up_reminders.thread_id AS related_thread_id,
+           public.engagement_follow_up_reminders.created_at AS created_at,
+           public.engagement_follow_up_reminders.status AS status,
+           public.engagement_follow_up_reminders.reason AS summary
+    FROM public.engagement_follow_up_reminders
+    WHERE (p_tenant_id IS NULL OR public.engagement_follow_up_reminders.tenant_id = p_tenant_id)
+      AND (p_prospect_id IS NULL OR public.engagement_follow_up_reminders.prospect_id = p_prospect_id)
+  )
+  SELECT object_type,
+         object_id,
+         related_thread_id,
+         created_at,
+         status,
+         summary
+  FROM timeline
+  ORDER BY timeline.created_at DESC;
 $$;
 
 COMMIT;

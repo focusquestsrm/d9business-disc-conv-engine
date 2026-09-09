@@ -268,6 +268,24 @@ describe('ai assisted engagement', () => {
     expect(offenders).toEqual([])
   })
 
+  it('wraps the Release 3D timeline union in a six-column contract with qualified final ordering', () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260910_000001_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
+
+    expect(migrationSql).toContain('CREATE OR REPLACE FUNCTION public.get_engagement_timeline')
+    expect(migrationSql).toContain('WITH timeline AS (')
+    expect(migrationSql).toContain('UNION ALL')
+    expect(migrationSql).toContain('ORDER BY timeline.created_at DESC')
+    expect(migrationSql).toContain('object_type')
+    expect(migrationSql).toContain('object_id')
+    expect(migrationSql).toContain('related_thread_id')
+    expect(migrationSql).toContain('created_at')
+    expect(migrationSql).toContain('status')
+    expect(migrationSql).toContain('summary')
+
+    const timelineRegex = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.get_engagement_timeline\([^)]*\)[\s\S]*?WITH\s+timeline\s+AS\s*\([\s\S]*?UNION\s+ALL[\s\S]*?ORDER\s+BY\s+timeline\.created_at\s+DESC;/m
+    expect(migrationSql).toMatch(timelineRegex)
+  })
+
   it('parses the Release 3D migration and verifier SQL without syntax issues', async () => {
     await loadModule()
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260910_000001_milestone_3d_ai_assisted_engagement.sql'), 'utf8')
