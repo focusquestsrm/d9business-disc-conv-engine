@@ -159,38 +159,56 @@ ALTER TABLE public.brilliant_directories_sync_events ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Authenticated users can read registration invitations" ON public.registration_invitations;
 CREATE POLICY "Authenticated users can read registration invitations" ON public.registration_invitations FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can insert registration invitations" ON public.registration_invitations;
 CREATE POLICY "Authenticated users can insert registration invitations" ON public.registration_invitations FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can update registration invitations" ON public.registration_invitations;
 CREATE POLICY "Authenticated users can update registration invitations" ON public.registration_invitations FOR UPDATE USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can delete registration invitations" ON public.registration_invitations;
 CREATE POLICY "Authenticated users can delete registration invitations" ON public.registration_invitations FOR DELETE USING (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Authenticated users can read registration handoffs" ON public.registration_handoffs;
 CREATE POLICY "Authenticated users can read registration handoffs" ON public.registration_handoffs FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can insert registration handoffs" ON public.registration_handoffs;
 CREATE POLICY "Authenticated users can insert registration handoffs" ON public.registration_handoffs FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can update registration handoffs" ON public.registration_handoffs;
 CREATE POLICY "Authenticated users can update registration handoffs" ON public.registration_handoffs FOR UPDATE USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can delete registration handoffs" ON public.registration_handoffs;
 CREATE POLICY "Authenticated users can delete registration handoffs" ON public.registration_handoffs FOR DELETE USING (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Authenticated users can read member profile links" ON public.member_profile_links;
 CREATE POLICY "Authenticated users can read member profile links" ON public.member_profile_links FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can insert member profile links" ON public.member_profile_links;
 CREATE POLICY "Authenticated users can insert member profile links" ON public.member_profile_links FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can update member profile links" ON public.member_profile_links;
 CREATE POLICY "Authenticated users can update member profile links" ON public.member_profile_links FOR UPDATE USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can delete member profile links" ON public.member_profile_links;
 CREATE POLICY "Authenticated users can delete member profile links" ON public.member_profile_links FOR DELETE USING (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Authenticated users can read registration journey events" ON public.registration_journey_events;
 CREATE POLICY "Authenticated users can read registration journey events" ON public.registration_journey_events FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can insert registration journey events" ON public.registration_journey_events;
 CREATE POLICY "Authenticated users can insert registration journey events" ON public.registration_journey_events FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can update registration journey events" ON public.registration_journey_events;
 CREATE POLICY "Authenticated users can update registration journey events" ON public.registration_journey_events FOR UPDATE USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can delete registration journey events" ON public.registration_journey_events;
 CREATE POLICY "Authenticated users can delete registration journey events" ON public.registration_journey_events FOR DELETE USING (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Authenticated users can read registration match candidates" ON public.registration_match_candidates;
 CREATE POLICY "Authenticated users can read registration match candidates" ON public.registration_match_candidates FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can insert registration match candidates" ON public.registration_match_candidates;
 CREATE POLICY "Authenticated users can insert registration match candidates" ON public.registration_match_candidates FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can update registration match candidates" ON public.registration_match_candidates;
 CREATE POLICY "Authenticated users can update registration match candidates" ON public.registration_match_candidates FOR UPDATE USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can delete registration match candidates" ON public.registration_match_candidates;
 CREATE POLICY "Authenticated users can delete registration match candidates" ON public.registration_match_candidates FOR DELETE USING (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Authenticated users can read Brilliant Directories sync events" ON public.brilliant_directories_sync_events;
 CREATE POLICY "Authenticated users can read Brilliant Directories sync events" ON public.brilliant_directories_sync_events FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can insert Brilliant Directories sync events" ON public.brilliant_directories_sync_events;
 CREATE POLICY "Authenticated users can insert Brilliant Directories sync events" ON public.brilliant_directories_sync_events FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can update Brilliant Directories sync events" ON public.brilliant_directories_sync_events;
 CREATE POLICY "Authenticated users can update Brilliant Directories sync events" ON public.brilliant_directories_sync_events FOR UPDATE USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Authenticated users can delete Brilliant Directories sync events" ON public.brilliant_directories_sync_events;
 CREATE POLICY "Authenticated users can delete Brilliant Directories sync events" ON public.brilliant_directories_sync_events FOR DELETE USING (auth.uid() IS NOT NULL);
 
 CREATE OR REPLACE FUNCTION public.evaluate_registration_invitation_eligibility(

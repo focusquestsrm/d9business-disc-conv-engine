@@ -187,6 +187,17 @@ const extractFunctionSignature = (sql: string, functionName: string) => {
   return `${functionName}(${types.join(',')})`
 }
 
+const extractCreatePolicies = (sql: string) => {
+  const pattern = /CREATE POLICY\s+"([^"]+)"\s+ON\s+public\.([A-Za-z0-9_]+)\s+FOR\s+(SELECT|INSERT|UPDATE|DELETE)\s+([\s\S]*?)\s*;/gi
+  return Array.from(sql.matchAll(pattern), (match) => ({
+    name: match[1],
+    table: match[2],
+    command: match[3],
+    body: match[4],
+    index: match.index ?? 0,
+  }))
+}
+
 describe('registration profile handoff', () => {
   it('tracks all seven lifecycle stages and valid/invalid transitions', () => {
     expect(REGISTRATION_LIFECYCLE_STAGES).toEqual([
@@ -316,6 +327,33 @@ describe('registration profile handoff', () => {
     expect(verifierSql).toContain('consent_allowed is not true')
     expect(verifierSql).toContain('opt_out_active is true')
     expect(verifierSql).toContain('frequency_ok is not true')
+  })
+
+  it('ensures every 3E policy has a matching rerun guard and valid syntax', async () => {
+    const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260911_000001_milestone_3e_registration_profile_handoff.sql'), 'utf8')
+    const createPolicies = extractCreatePolicies(migrationSql)
+
+    expect(createPolicies.length).toBe(24)
+
+    for (const policy of createPolicies) {
+      const dropGuard = `DROP POLICY IF EXISTS "${policy.name}" ON public.${policy.table};`
+      const before = migrationSql.slice(0, policy.index)
+
+      expect(before.trimEnd().endsWith(dropGuard)).toBe(true)
+
+      if (policy.command === 'SELECT' || policy.command === 'DELETE') {
+        expect(policy.body).not.toMatch(/WITH CHECK/i)
+      }
+
+      if (policy.command === 'INSERT') {
+        expect(policy.body).toMatch(/WITH CHECK/i)
+      }
+
+      if (policy.command === 'UPDATE') {
+        expect(policy.body).toMatch(/USING/i)
+        expect(policy.body).toMatch(/WITH CHECK/i)
+      }
+    }
   })
 
   it('keeps the migration and verifier aligned to the exact canonical 3E RPC signatures', async () => {
