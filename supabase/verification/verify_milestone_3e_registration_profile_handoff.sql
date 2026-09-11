@@ -383,13 +383,13 @@ WITH substantive_results AS (
              AND ((t.tgtype & 2) <> 0)
              AND ((t.tgtype & 4) <> 0)
              AND ((t.tgtype & 16) <> 0)
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%new.status = ''sent'''
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%human_approval_granted is not true%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_by is null%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_at is null%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%consent_allowed is not true%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%opt_out_active is true%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%frequency_ok is not true%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.status = ''sent''%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.human_approval_granted is not true%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_by is null%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_at is null%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.consent_allowed is not true%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.opt_out_active is true%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.frequency_ok is not true%'
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
@@ -403,14 +403,14 @@ WITH substantive_results AS (
              AND ((t.tgtype & 2) <> 0)
              AND ((t.tgtype & 4) <> 0)
              AND ((t.tgtype & 16) <> 0)
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%new.status = ''sent'''
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%human_approval_granted is not true%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_by is null%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_at is null%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%consent_allowed is not true%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%opt_out_active is true%'
-             AND lower(pg_get_functiondef(p.oid)) LIKE '%frequency_ok is not true%'
-         ) THEN 'A human approval gate blocks unsanctioned invitation sends.' ELSE 'The human approval gate before invitation send is missing.' END
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.status = ''sent''%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.human_approval_granted is not true%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_by is null%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_at is null%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.consent_allowed is not true%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.opt_out_active is true%'
+             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.frequency_ok is not true%'
+         ) THEN 'A human approval gate blocks unsanctioned invitation sends.' ELSE 'The human approval gate before invitation send is missing or failed.' END
   UNION ALL
   SELECT 'FUNCTION', 'public.record_registration_invitation_sent(uuid,uuid,text)', 'consent_and_opt_out_enforcement_before_invitation_sent', 'enforcement_before_send',
          CASE WHEN to_regprocedure('public.record_registration_invitation_sent(uuid,uuid,text)') IS NOT NULL THEN 'PRESENT' ELSE 'MISSING' END,
@@ -457,3 +457,4 @@ FROM (
 ORDER BY CASE WHEN category = 'OVERALL' THEN 1 ELSE 0 END, object_name, check_name;
 
 COMMIT;
+

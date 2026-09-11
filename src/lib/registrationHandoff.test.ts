@@ -356,6 +356,22 @@ describe('registration profile handoff', () => {
     }
   })
 
+  it('normalizes approval-gate function checks so they match the trigger body robustly', () => {
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3e_registration_profile_handoff.sql'), 'utf8')
+
+    expect(verifierSql).toContain('regexp_replace')
+    expect(verifierSql).toContain('COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)')
+    expect(verifierSql).toContain("new.status = ''sent''")
+    expect(verifierSql).toContain("new.human_approval_granted is not true")
+    expect(verifierSql).toContain("new.approved_by is null")
+    expect(verifierSql).toContain("new.approved_at is null")
+    expect(verifierSql).toContain("new.consent_allowed is not true")
+    expect(verifierSql).toContain("new.opt_out_active is true")
+    expect(verifierSql).toContain("new.frequency_ok is not true")
+    expect(verifierSql).toContain('A human approval gate blocks unsanctioned invitation sends.')
+    expect(verifierSql).toContain('CASE WHEN EXISTS')
+  })
+
   it('keeps the migration and verifier aligned to the exact canonical 3E RPC signatures', async () => {
     await loadModule()
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260911_000001_milestone_3e_registration_profile_handoff.sql'), 'utf8')
