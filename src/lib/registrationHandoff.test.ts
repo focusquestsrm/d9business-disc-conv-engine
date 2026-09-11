@@ -300,10 +300,22 @@ describe('registration profile handoff', () => {
     expect(migrationSql).toContain('BEFORE UPDATE OR DELETE ON public.registration_journey_events')
     expect(migrationSql).toContain('CREATE TRIGGER registration_journey_events_append_only')
 
-    expect(verifierSql).toContain('NOT tgisinternal')
+    expect(verifierSql).toContain('NOT t.tgisinternal')
+    expect(verifierSql).toContain('tgtype & 1')
     expect(verifierSql).toContain('tgtype & 2')
     expect(verifierSql).toContain('tgtype & 4')
+    expect(verifierSql).toContain('tgtype & 8')
+    expect(verifierSql).toContain('tgtype & 16')
     expect(verifierSql).toContain('pg_get_functiondef')
+    expect(verifierSql).toMatch(/journey_append_only_update_protection[\s\S]*tgrelid\s*=\s*'public\.registration_journey_events'::regclass[\s\S]*\(\(t\.tgtype & 1\) <> 0\)[\s\S]*\(\(t\.tgtype & 2\) <> 0\)[\s\S]*\(\(t\.tgtype & 16\) <> 0\)/)
+    expect(verifierSql).toMatch(/journey_append_only_delete_protection[\s\S]*tgrelid\s*=\s*'public\.registration_journey_events'::regclass[\s\S]*\(\(t\.tgtype & 1\) <> 0\)[\s\S]*\(\(t\.tgtype & 2\) <> 0\)[\s\S]*\(\(t\.tgtype & 8\) <> 0\)/)
+    expect(verifierSql).toMatch(/human_approval_before_invitation_sent[\s\S]*tgrelid\s*=\s*'public\.registration_invitations'::regclass[\s\S]*\(\(t\.tgtype & 1\) <> 0\)[\s\S]*\(\(t\.tgtype & 2\) <> 0\)[\s\S]*\(\(t\.tgtype & 4\) <> 0\)[\s\S]*\(\(t\.tgtype & 16\) <> 0\)/)
+    expect(verifierSql).toContain("human_approval_granted is not true")
+    expect(verifierSql).toContain('approved_by is null')
+    expect(verifierSql).toContain('approved_at is null')
+    expect(verifierSql).toContain('consent_allowed is not true')
+    expect(verifierSql).toContain('opt_out_active is true')
+    expect(verifierSql).toContain('frequency_ok is not true')
   })
 
   it('keeps the migration and verifier aligned to the exact canonical 3E RPC signatures', async () => {

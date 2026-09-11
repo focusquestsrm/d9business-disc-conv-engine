@@ -248,37 +248,69 @@ WITH substantive_results AS (
          CASE WHEN to_regprocedure('public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)') IS NOT NULL AND lower(pg_get_functiondef('public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)'::regprocedure)) LIKE '%p_previous_stage%' AND lower(pg_get_functiondef('public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)'::regprocedure)) LIKE '%p_new_stage%' AND lower(pg_get_functiondef('public.advance_registration_stage(uuid,uuid,text,text,text,uuid,uuid,text)'::regprocedure)) LIKE '%event_source%' THEN 'Advance stage captures previous/new stage transitions and event source metadata.' ELSE 'Advance stage does not preserve transition metadata for validation.' END
   UNION ALL
   SELECT 'TRIGGER', 'public.registration_journey_events', 'journey_append_only_update_protection', 'UPDATE',
-         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'registration_journey_events_append_only' AND NOT tgisinternal) THEN 'PRESENT' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_trigger t
            WHERE t.tgname = 'registration_journey_events_append_only'
              AND NOT t.tgisinternal
+             AND t.tgrelid = 'public.registration_journey_events'::regclass
+         ) THEN 'PRESENT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM pg_trigger t
+           JOIN pg_proc p ON p.oid = t.tgfoid
+           WHERE t.tgname = 'registration_journey_events_append_only'
+             AND NOT t.tgisinternal
+             AND t.tgrelid = 'public.registration_journey_events'::regclass
+             AND p.proname = 'prevent_registration_journey_append_mutation'
+             AND ((t.tgtype & 1) <> 0)
              AND ((t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 16) <> 0)
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_trigger t
+           JOIN pg_proc p ON p.oid = t.tgfoid
            WHERE t.tgname = 'registration_journey_events_append_only'
              AND NOT t.tgisinternal
+             AND t.tgrelid = 'public.registration_journey_events'::regclass
+             AND p.proname = 'prevent_registration_journey_append_mutation'
+             AND ((t.tgtype & 1) <> 0)
              AND ((t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 16) <> 0)
          ) THEN 'Journey updates are blocked by append-only trigger protection.' ELSE 'Journey update protection is missing.' END
   UNION ALL
   SELECT 'TRIGGER', 'public.registration_journey_events', 'journey_append_only_delete_protection', 'DELETE',
-         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'registration_journey_events_append_only' AND NOT tgisinternal) THEN 'PRESENT' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_trigger t
            WHERE t.tgname = 'registration_journey_events_append_only'
              AND NOT t.tgisinternal
-             AND ((t.tgtype & 4) <> 0)
+             AND t.tgrelid = 'public.registration_journey_events'::regclass
+         ) THEN 'PRESENT' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM pg_trigger t
+           JOIN pg_proc p ON p.oid = t.tgfoid
+           WHERE t.tgname = 'registration_journey_events_append_only'
+             AND NOT t.tgisinternal
+             AND t.tgrelid = 'public.registration_journey_events'::regclass
+             AND p.proname = 'prevent_registration_journey_append_mutation'
+             AND ((t.tgtype & 1) <> 0)
+             AND ((t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 8) <> 0)
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_trigger t
+           JOIN pg_proc p ON p.oid = t.tgfoid
            WHERE t.tgname = 'registration_journey_events_append_only'
              AND NOT t.tgisinternal
-             AND ((t.tgtype & 4) <> 0)
+             AND t.tgrelid = 'public.registration_journey_events'::regclass
+             AND p.proname = 'prevent_registration_journey_append_mutation'
+             AND ((t.tgtype & 1) <> 0)
+             AND ((t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 8) <> 0)
          ) THEN 'Journey deletes are blocked by append-only trigger protection.' ELSE 'Journey delete protection is missing.' END
   UNION ALL
   SELECT 'FUNCTION', 'public.record_registration_invitation_sent(uuid,uuid,text)', 'release_3b_consent_dependency', 'consent_allowed',
@@ -345,11 +377,19 @@ WITH substantive_results AS (
            JOIN pg_proc p ON p.oid = t.tgfoid
            WHERE t.tgname = 'registration_invitations_approval_gate'
              AND NOT t.tgisinternal
+             AND t.tgrelid = 'public.registration_invitations'::regclass
              AND p.proname = 'require_registration_invitation_approval'
-             AND ((t.tgtype & 1) <> 0 OR (t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 1) <> 0)
+             AND ((t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 4) <> 0)
+             AND ((t.tgtype & 16) <> 0)
              AND lower(pg_get_functiondef(p.oid)) LIKE '%new.status = ''sent'''
              AND lower(pg_get_functiondef(p.oid)) LIKE '%human_approval_granted is not true%'
              AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_by is null%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_at is null%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%consent_allowed is not true%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%opt_out_active is true%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%frequency_ok is not true%'
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
@@ -357,11 +397,19 @@ WITH substantive_results AS (
            JOIN pg_proc p ON p.oid = t.tgfoid
            WHERE t.tgname = 'registration_invitations_approval_gate'
              AND NOT t.tgisinternal
+             AND t.tgrelid = 'public.registration_invitations'::regclass
              AND p.proname = 'require_registration_invitation_approval'
-             AND ((t.tgtype & 1) <> 0 OR (t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 1) <> 0)
+             AND ((t.tgtype & 2) <> 0)
+             AND ((t.tgtype & 4) <> 0)
+             AND ((t.tgtype & 16) <> 0)
              AND lower(pg_get_functiondef(p.oid)) LIKE '%new.status = ''sent'''
              AND lower(pg_get_functiondef(p.oid)) LIKE '%human_approval_granted is not true%'
              AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_by is null%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%approved_at is null%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%consent_allowed is not true%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%opt_out_active is true%'
+             AND lower(pg_get_functiondef(p.oid)) LIKE '%frequency_ok is not true%'
          ) THEN 'A human approval gate blocks unsanctioned invitation sends.' ELSE 'The human approval gate before invitation send is missing.' END
   UNION ALL
   SELECT 'FUNCTION', 'public.record_registration_invitation_sent(uuid,uuid,text)', 'consent_and_opt_out_enforcement_before_invitation_sent', 'enforcement_before_send',
