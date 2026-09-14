@@ -153,8 +153,9 @@ describe('release 3F security and live acceptance', () => {
     const wrongAttribution = {
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource
-        .replace("requested_by,\n        v_actor,", "requested_by,\n        'system',")
-        .replace("'actor_user_id', v_actor::text", "'actor_user_id', 'system'::text"),
+        .replace(/v_actor/g, "'system'")
+        .replace("'system'::text", "'system'::text")
+        .replace("'system'", "'system'"),
     }
 
     expect(createExportRequestNoClientActorId(canonical)).toBe(true)
