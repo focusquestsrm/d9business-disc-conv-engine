@@ -375,41 +375,43 @@ WITH substantive_results AS (
            SELECT 1
            FROM pg_trigger t
            JOIN pg_proc p ON p.oid = t.tgfoid
+           CROSS JOIN LATERAL regexp_replace(lower(p.prosrc), '\s+', ' ', 'g') AS normalized_source
            WHERE t.tgname = 'registration_invitations_approval_gate'
-             AND NOT t.tgisinternal
              AND t.tgrelid = 'public.registration_invitations'::regclass
+             AND NOT t.tgisinternal
              AND p.proname = 'require_registration_invitation_approval'
              AND ((t.tgtype & 1) <> 0)
              AND ((t.tgtype & 2) <> 0)
              AND ((t.tgtype & 4) <> 0)
              AND ((t.tgtype & 16) <> 0)
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.status = ''sent''%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.human_approval_granted is not true%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_by is null%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_at is null%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.consent_allowed is not true%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.opt_out_active is true%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.frequency_ok is not true%'
+             AND position('new.status = ''sent''' in normalized_source) > 0
+             AND position('new.human_approval_granted is not true' in normalized_source) > 0
+             AND position('new.approved_by is null' in normalized_source) > 0
+             AND position('new.approved_at is null' in normalized_source) > 0
+             AND position('new.consent_allowed is not true' in normalized_source) > 0
+             AND position('new.opt_out_active is true' in normalized_source) > 0
+             AND position('new.frequency_ok is not true' in normalized_source) > 0
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_trigger t
            JOIN pg_proc p ON p.oid = t.tgfoid
+           CROSS JOIN LATERAL regexp_replace(lower(p.prosrc), '\s+', ' ', 'g') AS normalized_source
            WHERE t.tgname = 'registration_invitations_approval_gate'
-             AND NOT t.tgisinternal
              AND t.tgrelid = 'public.registration_invitations'::regclass
+             AND NOT t.tgisinternal
              AND p.proname = 'require_registration_invitation_approval'
              AND ((t.tgtype & 1) <> 0)
              AND ((t.tgtype & 2) <> 0)
              AND ((t.tgtype & 4) <> 0)
              AND ((t.tgtype & 16) <> 0)
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.status = ''sent''%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.human_approval_granted is not true%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_by is null%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.approved_at is null%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.consent_allowed is not true%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.opt_out_active is true%'
-             AND regexp_replace(lower(COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)), E'\\s+', ' ', 'g') LIKE '%new.frequency_ok is not true%'
+             AND position('new.status = ''sent''' in normalized_source) > 0
+             AND position('new.human_approval_granted is not true' in normalized_source) > 0
+             AND position('new.approved_by is null' in normalized_source) > 0
+             AND position('new.approved_at is null' in normalized_source) > 0
+             AND position('new.consent_allowed is not true' in normalized_source) > 0
+             AND position('new.opt_out_active is true' in normalized_source) > 0
+             AND position('new.frequency_ok is not true' in normalized_source) > 0
          ) THEN 'A human approval gate blocks unsanctioned invitation sends.' ELSE 'The human approval gate before invitation send is missing or failed.' END
   UNION ALL
   SELECT 'FUNCTION', 'public.record_registration_invitation_sent(uuid,uuid,text)', 'consent_and_opt_out_enforcement_before_invitation_sent', 'enforcement_before_send',

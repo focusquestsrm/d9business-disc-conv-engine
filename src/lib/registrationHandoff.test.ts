@@ -356,20 +356,23 @@ describe('registration profile handoff', () => {
     }
   })
 
-  it('normalizes approval-gate function checks so they match the trigger body robustly', () => {
+  it('uses the robust trigger source checks for the invitation approval gate and fails if any safeguard is removed', () => {
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_milestone_3e_registration_profile_handoff.sql'), 'utf8')
 
-    expect(verifierSql).toContain('regexp_replace')
-    expect(verifierSql).toContain('COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)')
-    expect(verifierSql).toContain("new.status = ''sent''")
-    expect(verifierSql).toContain("new.human_approval_granted is not true")
-    expect(verifierSql).toContain("new.approved_by is null")
-    expect(verifierSql).toContain("new.approved_at is null")
-    expect(verifierSql).toContain("new.consent_allowed is not true")
-    expect(verifierSql).toContain("new.opt_out_active is true")
-    expect(verifierSql).toContain("new.frequency_ok is not true")
+    expect(verifierSql).toContain('JOIN pg_proc p ON p.oid = t.tgfoid')
+    expect(verifierSql).toContain('regexp_replace(lower(p.prosrc),')
+    expect(verifierSql).toContain('position(')
+    expect(verifierSql).toContain("position('new.status = ''sent''' in normalized_source) > 0")
+    expect(verifierSql).toContain("position('new.human_approval_granted is not true' in normalized_source) > 0")
+    expect(verifierSql).toContain("position('new.approved_by is null' in normalized_source) > 0")
+    expect(verifierSql).toContain("position('new.approved_at is null' in normalized_source) > 0")
+    expect(verifierSql).toContain("position('new.consent_allowed is not true' in normalized_source) > 0")
+    expect(verifierSql).toContain("position('new.opt_out_active is true' in normalized_source) > 0")
+    expect(verifierSql).toContain("position('new.frequency_ok is not true' in normalized_source) > 0")
     expect(verifierSql).toContain('A human approval gate blocks unsanctioned invitation sends.')
     expect(verifierSql).toContain('CASE WHEN EXISTS')
+    expect(verifierSql).not.toContain('COALESCE(pg_get_functiondef(p.oid)::text, p.prosrc)')
+    expect(verifierSql).not.toContain("LIKE '%new.status = ''sent''%'")
   })
 
   it('keeps the migration and verifier aligned to the exact canonical 3E RPC signatures', async () => {
