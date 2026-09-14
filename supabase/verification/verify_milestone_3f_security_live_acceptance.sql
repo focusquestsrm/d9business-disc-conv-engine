@@ -42,56 +42,92 @@ WITH substantive_results AS (
          CASE WHEN to_regprocedure('public.record_export_generation(uuid,text,text,integer,text,text)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regprocedure('public.record_export_generation(uuid,text,text,integer,text,text)') IS NOT NULL THEN 'Export generation function exists.' ELSE 'Export generation function is missing.' END
   UNION ALL
-  SELECT 'FUNCTION', 'public.record_export_download(uuid,text,uuid)', 'function_exists', 'EXISTS',
-         CASE WHEN to_regprocedure('public.record_export_download(uuid,text,uuid)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
-         CASE WHEN to_regprocedure('public.record_export_download(uuid,text,uuid)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN to_regprocedure('public.record_export_download(uuid,text,uuid)') IS NOT NULL THEN 'Export download function exists.' ELSE 'Export download function is missing.' END
+  SELECT 'FUNCTION', 'public.record_export_download(uuid,text)', 'function_exists', 'EXISTS',
+         CASE WHEN to_regprocedure('public.record_export_download(uuid,text)') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.record_export_download(uuid,text)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.record_export_download(uuid,text)') IS NOT NULL THEN 'Export download function exists.' ELSE 'Export download function is missing.' END
   UNION ALL
   SELECT 'SECURITY', 'public.create_export_request', 'no_client_actor_id', 'NO_CLIENT_ID',
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
            WHERE p.proname = 'create_export_request'
+             AND p.proargnames IS NOT NULL
+             AND array_position(p.proargnames, 'p_actor_id') IS NULL
+             AND array_position(p.proargnames, 'p_requested_by') IS NULL
+             AND array_position(p.proargnames, 'p_generated_by') IS NULL
+             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
              AND position('auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
              AND position('requested_by = auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
          ) THEN 'NO_CLIENT_ID' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
            WHERE p.proname = 'create_export_request'
+             AND p.proargnames IS NOT NULL
+             AND array_position(p.proargnames, 'p_actor_id') IS NULL
+             AND array_position(p.proargnames, 'p_requested_by') IS NULL
+             AND array_position(p.proargnames, 'p_generated_by') IS NULL
+             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
              AND position('auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
              AND position('requested_by = auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
            WHERE p.proname = 'create_export_request'
+             AND p.proargnames IS NOT NULL
+             AND array_position(p.proargnames, 'p_actor_id') IS NULL
+             AND array_position(p.proargnames, 'p_requested_by') IS NULL
+             AND array_position(p.proargnames, 'p_generated_by') IS NULL
+             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
              AND position('auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
              AND position('requested_by = auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-         ) THEN 'The request function derives the actor from auth.uid() and rejects a client-supplied actor ID.' ELSE 'The request function still permits a client-supplied actor ID.' END
+         ) THEN 'The request function derives the actor from auth.uid() and never accepts a client actor argument.' ELSE 'The request function still permits a client-supplied actor ID.' END
   UNION ALL
   SELECT 'SECURITY', 'public.record_export_download', 'no_client_actor_id', 'NO_CLIENT_ID',
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
            WHERE p.proname = 'record_export_download'
+             AND p.proargnames IS NOT NULL
+             AND array_position(p.proargnames, 'p_actor_id') IS NULL
+             AND array_position(p.proargnames, 'p_requested_by') IS NULL
+             AND array_position(p.proargnames, 'p_generated_by') IS NULL
+             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
              AND position('auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('coalesce(p_downloaded_by, auth.uid())' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor is null' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
          ) THEN 'NO_CLIENT_ID' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
            WHERE p.proname = 'record_export_download'
+             AND p.proargnames IS NOT NULL
+             AND array_position(p.proargnames, 'p_actor_id') IS NULL
+             AND array_position(p.proargnames, 'p_requested_by') IS NULL
+             AND array_position(p.proargnames, 'p_generated_by') IS NULL
+             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
              AND position('auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('coalesce(p_downloaded_by, auth.uid())' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor is null' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
            WHERE p.proname = 'record_export_download'
+             AND p.proargnames IS NOT NULL
+             AND array_position(p.proargnames, 'p_actor_id') IS NULL
+             AND array_position(p.proargnames, 'p_requested_by') IS NULL
+             AND array_position(p.proargnames, 'p_generated_by') IS NULL
+             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
              AND position('auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('coalesce(p_downloaded_by, auth.uid())' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-         ) THEN 'Download auditing uses auth.uid() as the trusted actor source and does not trust the client.' ELSE 'Download auditing still accepts a client-supplied actor ID.' END
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+             AND position('v_actor is null' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
+         ) THEN 'Download auditing uses auth.uid() as the trusted actor source and never accepts a client actor argument.' ELSE 'Download auditing still accepts a client-supplied actor ID.' END
 ), all_results AS (
   SELECT category, object_name, check_name, expected_result, actual_result, status, details FROM substantive_results
 ), overall_result AS (

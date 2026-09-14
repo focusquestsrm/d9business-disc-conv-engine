@@ -317,6 +317,8 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.record_export_download(uuid, text, uuid);
+
 CREATE OR REPLACE FUNCTION public.record_export_download(
   p_request_id uuid,
   p_file_name text DEFAULT NULL
