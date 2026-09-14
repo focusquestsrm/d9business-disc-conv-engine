@@ -19,14 +19,9 @@ const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null;
   const hasAuthUid = normalized.includes('auth.uid()') && normalized.includes('v_actor := auth.uid()')
   const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
   const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
-  const writesActorIntoRequestedBy = normalized.includes('requested_by')
-    && normalized.includes('v_actor')
-    && (
-      normalized.includes('requested_by = v_actor')
-      || (normalized.includes('requested_by,') && normalized.includes('v_actor'))
-    )
+  const insertWithRequestedByAndVActor = /insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\)/.test(normalized)
 
-  return hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && writesActorIntoRequestedBy
+  return hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && insertWithRequestedByAndVActor
 }
 
 describe('release 3F security and live acceptance', () => {
@@ -152,10 +147,7 @@ describe('release 3F security and live acceptance', () => {
 
     const wrongAttribution = {
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
-      prosrc: canonicalSource
-        .replace(/v_actor/g, "'system'")
-        .replace("'system'::text", "'system'::text")
-        .replace("'system'", "'system'"),
+      prosrc: canonicalSource.replace('v_actor,', "'system',").replace("'actor_user_id', v_actor::text", "'actor_user_id', 'system'::text"),
     }
 
     expect(createExportRequestNoClientActorId(canonical)).toBe(true)

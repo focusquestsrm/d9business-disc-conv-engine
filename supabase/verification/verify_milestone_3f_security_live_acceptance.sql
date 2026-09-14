@@ -73,8 +73,10 @@ WITH substantive_results AS (
              AND position('auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
              AND position('v_actor := auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
              AND position('if v_actor is null' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
-             AND position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
-             AND position('v_actor' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'))
+             AND regexp_like(
+               regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'),
+               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\\)'
+             )
          ) THEN 'NO_CLIENT_ID' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
            SELECT 1
@@ -101,8 +103,10 @@ WITH substantive_results AS (
              AND position('auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
              AND position('v_actor := auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
              AND position('if v_actor is null' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
-             AND position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
-             AND position('v_actor' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'))
+             AND regexp_like(
+               regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'),
+               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\\)'
+             )
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
@@ -129,8 +133,10 @@ WITH substantive_results AS (
              AND position('auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
              AND position('v_actor := auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
              AND position('if v_actor is null' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
-             AND position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
-             AND position('v_actor' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'))
+             AND regexp_like(
+               regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'),
+               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\\)'
+             )
          ) THEN 'The request function derives the actor from auth.uid(), rejects anonymous callers, asserts authorization, and writes requested_by from the authenticated actor.' ELSE 'The request function still permits a client-supplied actor ID.' END
   UNION ALL
   SELECT 'SECURITY', 'public.record_export_download', 'no_client_actor_id', 'NO_CLIENT_ID',
