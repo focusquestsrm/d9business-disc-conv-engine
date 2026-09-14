@@ -7,24 +7,24 @@ import { assertRepositoryRoleAccess, evaluateSecurityAccess, getRepositoryRoleDe
 const normalizeSource = (source: string) => source.replace(/\s+/g, ' ').toLowerCase()
 
 const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null; prosrc: string }) => {
-  if (!fn.proargnames) return false
-
-  const normalized = normalizeSource(fn.prosrc)
-  const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
   const argNames = fn.proargnames ?? []
+  const normalized = normalizeSource(fn.prosrc ?? '')
+  const canonicalArgs = ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at']
+  const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
 
-  const hasCanonicalSignature = argNames.length === 5
-    && argNames[0] === 'p_resource_type'
-    && argNames[1] === 'p_export_scope'
-    && argNames[2] === 'p_target_tenant_id'
-    && argNames[3] === 'p_request_reason'
-    && argNames[4] === 'p_expires_at'
+  const hasCanonicalSignature = argNames.length === canonicalArgs.length
+    && canonicalArgs.every((name, index) => argNames[index] === name)
 
   const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
   const hasAuthUid = normalized.includes('auth.uid()') && normalized.includes('v_actor := auth.uid()')
   const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
   const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
-  const writesActorIntoRequestedBy = normalized.includes('requested_by') && normalized.includes('v_actor') && normalized.includes('requested_by,') && normalized.includes('v_actor,')
+  const writesActorIntoRequestedBy = normalized.includes('requested_by')
+    && normalized.includes('v_actor')
+    && (
+      normalized.includes('requested_by = v_actor')
+      || (normalized.includes('requested_by,') && normalized.includes('v_actor'))
+    )
 
   return hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && writesActorIntoRequestedBy
 }
@@ -103,6 +103,38 @@ describe('release 3F security and live acceptance', () => {
       prosrc: canonicalSource,
     }
 
+    const liveDiagnosticMatch = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: `
+        v_actor := auth.uid();
+        if v_actor is null then
+          raise exception 'Anonymous export requests are denied. Authentication is required.';
+        end if;
+        if not public.assert_repository_export_authorization(p_resource_type, p_export_scope, p_target_tenant_id) then
+          raise exception 'Permission denied';
+        end if;
+        insert into public.export_requests (
+          resource_type,
+          export_scope,
+          target_tenant_id,
+          requested_by,
+          status,
+          request_reason,
+          expires_at,
+          metadata
+        ) values (
+          p_resource_type,
+          p_export_scope,
+          p_target_tenant_id,
+          v_actor,
+          'pending',
+          p_request_reason,
+          coalesce(p_expires_at, now() + interval '24 hours'),
+          jsonb_build_object('source', 'repository_workflow', 'actor_user_id', v_actor::text, 'resource_type', p_resource_type)
+        );
+      `,
+    }
+
     const staleActor = {
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_actor_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource,
@@ -120,10 +152,13 @@ describe('release 3F security and live acceptance', () => {
 
     const wrongAttribution = {
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
-      prosrc: canonicalSource.replace('v_actor,', "'system',"),
+      prosrc: canonicalSource
+        .replace("requested_by,\n        v_actor,", "requested_by,\n        'system',")
+        .replace("'actor_user_id', v_actor::text", "'actor_user_id', 'system'::text"),
     }
 
     expect(createExportRequestNoClientActorId(canonical)).toBe(true)
+    expect(createExportRequestNoClientActorId(liveDiagnosticMatch)).toBe(true)
     expect(createExportRequestNoClientActorId(staleActor)).toBe(false)
     expect(createExportRequestNoClientActorId(staleRequestedBy)).toBe(false)
     expect(createExportRequestNoClientActorId(noAuthUid)).toBe(false)

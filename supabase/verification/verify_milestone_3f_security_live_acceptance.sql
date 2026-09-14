@@ -51,62 +51,86 @@ WITH substantive_results AS (
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
-           WHERE p.proname = 'create_export_request'
-             AND p.oid = 'public.create_export_request(text,text,uuid,text,timestamptz)'::regprocedure
-             AND p.proargnames IS NOT NULL
-             AND array_position(p.proargnames, 'p_actor_id') IS NULL
-             AND array_position(p.proargnames, 'p_requested_by') IS NULL
-             AND array_position(p.proargnames, 'p_generated_by') IS NULL
-             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
-             AND array_position(p.proargnames, 'actor_id') IS NULL
-             AND array_position(p.proargnames, 'requested_by') IS NULL
-             AND array_position(p.proargnames, 'generated_by') IS NULL
-             AND array_position(p.proargnames, 'downloaded_by') IS NULL
-             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('if v_actor is null' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('public.assert_repository_export_authorization' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('requested_by' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('v_actor' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g'))
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public'
+             AND p.proname = 'create_export_request'
+             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
+               'p_resource_type',
+               'p_export_scope',
+               'p_target_tenant_id',
+               'p_request_reason',
+               'p_expires_at'
+             ]
+             AND 'p_actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND position('auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('if v_actor is null' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('v_actor' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'))
          ) THEN 'NO_CLIENT_ID' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
-           WHERE p.proname = 'create_export_request'
-             AND p.oid = 'public.create_export_request(text,text,uuid,text,timestamptz)'::regprocedure
-             AND p.proargnames IS NOT NULL
-             AND array_position(p.proargnames, 'p_actor_id') IS NULL
-             AND array_position(p.proargnames, 'p_requested_by') IS NULL
-             AND array_position(p.proargnames, 'p_generated_by') IS NULL
-             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
-             AND array_position(p.proargnames, 'actor_id') IS NULL
-             AND array_position(p.proargnames, 'requested_by') IS NULL
-             AND array_position(p.proargnames, 'generated_by') IS NULL
-             AND array_position(p.proargnames, 'downloaded_by') IS NULL
-             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('if v_actor is null' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('public.assert_repository_export_authorization' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('requested_by' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('v_actor' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g'))
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public'
+             AND p.proname = 'create_export_request'
+             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
+               'p_resource_type',
+               'p_export_scope',
+               'p_target_tenant_id',
+               'p_request_reason',
+               'p_expires_at'
+             ]
+             AND 'p_actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND position('auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('if v_actor is null' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('v_actor' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'))
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
-           WHERE p.proname = 'create_export_request'
-             AND p.oid = 'public.create_export_request(text,text,uuid,text,timestamptz)'::regprocedure
-             AND p.proargnames IS NOT NULL
-             AND array_position(p.proargnames, 'p_actor_id') IS NULL
-             AND array_position(p.proargnames, 'p_requested_by') IS NULL
-             AND array_position(p.proargnames, 'p_generated_by') IS NULL
-             AND array_position(p.proargnames, 'p_downloaded_by') IS NULL
-             AND array_position(p.proargnames, 'actor_id') IS NULL
-             AND array_position(p.proargnames, 'requested_by') IS NULL
-             AND array_position(p.proargnames, 'generated_by') IS NULL
-             AND array_position(p.proargnames, 'downloaded_by') IS NULL
-             AND position('v_actor := auth.uid()' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('if v_actor is null' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('public.assert_repository_export_authorization' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('requested_by' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > 0
-             AND position('v_actor' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(p.prosrc), '\s+', ' ', 'g'))
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public'
+             AND p.proname = 'create_export_request'
+             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
+               'p_resource_type',
+               'p_export_scope',
+               'p_target_tenant_id',
+               'p_request_reason',
+               'p_expires_at'
+             ]
+             AND 'p_actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND position('auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('v_actor := auth.uid()' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('if v_actor is null' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > 0
+             AND position('v_actor' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g')) > position('requested_by' in regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g'))
          ) THEN 'The request function derives the actor from auth.uid(), rejects anonymous callers, asserts authorization, and writes requested_by from the authenticated actor.' ELSE 'The request function still permits a client-supplied actor ID.' END
   UNION ALL
   SELECT 'SECURITY', 'public.record_export_download', 'no_client_actor_id', 'NO_CLIENT_ID',
