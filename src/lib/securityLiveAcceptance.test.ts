@@ -4,6 +4,30 @@ import { parseSync } from 'pgsql-parser'
 import { describe, expect, it } from 'vitest'
 import { assertRepositoryRoleAccess, evaluateSecurityAccess, getRepositoryRoleDefinition, repositoryRoleDefinitions } from './securityLiveAcceptance'
 
+const normalizeSource = (source: string) => source.replace(/\s+/g, ' ').toLowerCase()
+
+const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null; prosrc: string }) => {
+  if (!fn.proargnames) return false
+
+  const normalized = normalizeSource(fn.prosrc)
+  const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
+
+  const hasCanonicalSignature = fn.proargnames.length === 5
+    && fn.proargnames[0] === 'p_resource_type'
+    && fn.proargnames[1] === 'p_export_scope'
+    && fn.proargnames[2] === 'p_target_tenant_id'
+    && fn.proargnames[3] === 'p_request_reason'
+    && fn.proargnames[4] === 'p_expires_at'
+
+  const hasNoActorArgument = !!fn.proargnames && forbidden.every((name) => !fn.proargnames.includes(name))
+  const hasAuthUid = normalized.includes('auth.uid()') && normalized.includes('v_actor := auth.uid()')
+  const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
+  const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
+  const writesActorIntoRequestedBy = normalized.includes('requested_by') && normalized.includes('v_actor') && normalized.includes('requested_by,') && normalized.includes('v_actor,')
+
+  return hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && writesActorIntoRequestedBy
+}
+
 describe('release 3F security and live acceptance', () => {
   it('keeps the 3F migration and verifier aligned to the real repository role model and export audit flow', () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260912_000001_milestone_3f_security_live_acceptance.sql'), 'utf8')
@@ -41,6 +65,68 @@ describe('release 3F security and live acceptance', () => {
     expect(() => parseSync(verifierSql)).not.toThrow()
     console.log('MIGRATION_3F_PARSE_OK')
     console.log('VERIFIER_3F_PARSE_OK')
+  })
+
+  it('rejects stale client actor arguments and preserves the canonical live create_export_request definition', () => {
+    const canonicalSource = `
+      v_actor := auth.uid();
+      if v_actor is null then
+        raise exception 'Anonymous export requests are denied. Authentication is required.';
+      end if;
+      if not public.assert_repository_export_authorization(p_resource_type, p_export_scope, p_target_tenant_id) then
+        raise exception 'Permission denied';
+      end if;
+      insert into public.export_requests (
+        resource_type,
+        export_scope,
+        target_tenant_id,
+        requested_by,
+        status,
+        request_reason,
+        expires_at,
+        metadata
+      ) values (
+        p_resource_type,
+        p_export_scope,
+        p_target_tenant_id,
+        v_actor,
+        'pending',
+        p_request_reason,
+        coalesce(p_expires_at, now() + interval '24 hours'),
+        jsonb_build_object('source', 'repository_workflow', 'actor_user_id', v_actor::text, 'resource_type', p_resource_type)
+      );
+    `
+
+    const canonical = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: canonicalSource,
+    }
+
+    const staleActor = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_actor_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: canonicalSource,
+    }
+
+    const staleRequestedBy = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_requested_by', 'p_expires_at'],
+      prosrc: canonicalSource,
+    }
+
+    const noAuthUid = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: canonicalSource.replace('v_actor := auth.uid();', 'v_actor := null;'),
+    }
+
+    const wrongAttribution = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: canonicalSource.replace('v_actor,', "'system',"),
+    }
+
+    expect(createExportRequestNoClientActorId(canonical)).toBe(true)
+    expect(createExportRequestNoClientActorId(staleActor)).toBe(false)
+    expect(createExportRequestNoClientActorId(staleRequestedBy)).toBe(false)
+    expect(createExportRequestNoClientActorId(noAuthUid)).toBe(false)
+    expect(createExportRequestNoClientActorId(wrongAttribution)).toBe(false)
   })
 
   it('uses the real repository role model and blocks anonymous or cross-organization access', () => {
