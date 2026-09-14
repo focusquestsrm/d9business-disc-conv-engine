@@ -40,6 +40,8 @@ import { isSupabaseConfigured, supabase } from './lib/supabaseClient'
 import { verificationRepository } from './lib/verificationRepository'
 import { buildVerificationWorkbook, parseVerificationWorkbook } from './lib/verificationWorkbook'
 import { buildWorkQueueSummary, filterWorkItems, normalizeWorkItem } from './lib/workqueue'
+import { createExportAuditState, exportAuditRepository } from './lib/exportAuditRepository'
+import { getSecurityStatusSummary } from './lib/securityLiveAcceptance'
 
 type NavItem = {
   label: string
@@ -91,7 +93,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Administration',
-    items: [{ label: 'Users & Roles', icon: Users, to: '/admin/users', requiresAdmin: true }, { label: 'Audit Log', icon: FileText, to: '/audit-log' }, { label: 'Settings', icon: Building2, to: '/organization-settings' }],
+    items: [{ label: 'Users & Roles', icon: Users, to: '/admin/users', requiresAdmin: true }, { label: 'Audit Log', icon: FileText, to: '/audit-log' }, { label: 'Organization Exports', icon: FileText, to: '/organization-exports' }, { label: 'Export Audit History', icon: FileText, to: '/export-history' }, { label: 'Security & Live Acceptance', icon: ShieldCheck, to: '/security-live-acceptance' }, { label: 'Settings', icon: Building2, to: '/organization-settings' }],
   },
 ]
 
@@ -588,6 +590,36 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <IntegrationsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organization-exports"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <OrganizationExportsPage currentUserId={session?.user?.id ?? null} roleCode={authUser?.roleCode ?? null} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/export-history"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <ExportAuditHistoryPage currentUserId={session?.user?.id ?? null} roleCode={authUser?.roleCode ?? null} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/security-live-acceptance"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <SecurityLiveAcceptancePage currentUserId={session?.user?.id ?? null} roleCode={authUser?.roleCode ?? null} />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -4863,6 +4895,142 @@ function SettingsPage() {
       <div className="panel empty-state">
         <h2>Configuration controls</h2>
         <p>Platform settings remain guarded and will be managed through approved administrator workflows.</p>
+      </div>
+    </div>
+  )
+}
+
+function SecurityLiveAcceptancePage({ currentUserId, roleCode }: { currentUserId: string | null, roleCode: string | null }) {
+  const summary = getSecurityStatusSummary()
+  const accessState = createExportAuditState({
+    isAuthenticated: Boolean(currentUserId),
+    roleCode,
+    hasMembership: true,
+    isActiveMember: true,
+    isProviderConnected: false,
+    targetOrganizationId: 'org-1',
+    actorOrganizationId: 'org-1',
+    requiresD9Affiliation: true,
+    requiresPiiAccess: true,
+    isExportRequestValid: true,
+  })
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Security</p>
+          <h1>Security &amp; Live Acceptance</h1>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="status-grid">
+          {summary.items.map((item) => (
+            <div key={item.label} className="status-card">
+              <p className="eyebrow">{item.label}</p>
+              <strong>{item.value}</strong>
+              <span className={`pill ${item.state === 'ok' ? 'success' : item.state === 'warning' ? 'neutral' : 'danger'}`}>
+                {item.state}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2>Current repository access state</h2>
+        <p>{accessState.reason}</p>
+        <div className="pill-row">
+          <span className={`pill ${accessState.state === 'denied' || accessState.state === 'failure' ? 'danger' : accessState.state === 'disconnected' ? 'neutral' : 'success'}`}>{accessState.state}</span>
+          <span className="pill neutral">public URL: none</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OrganizationExportsPage({ currentUserId, roleCode }: { currentUserId: string | null, roleCode: string | null }) {
+  const [status, setStatus] = useState<'idle' | 'requested' | 'denied' | 'disconnected'>('idle')
+
+  const createRequest = async () => {
+    const request = await exportAuditRepository.createRequest({
+      resourceType: 'verification_cases',
+      exportScope: 'verification',
+      requestedBy: currentUserId,
+      roleCode,
+      targetOrganizationId: 'org-1',
+      isProviderConnected: true,
+      reason: 'Verification export request',
+    })
+
+    setStatus(request.status === 'requested' ? 'requested' : request.status === 'denied' ? 'denied' : request.status === 'disconnected' ? 'disconnected' : 'idle')
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Operations</p>
+          <h1>Organization Exports</h1>
+        </div>
+        <button type="button" className="primary-button" onClick={createRequest}>Request export</button>
+      </div>
+
+      <div className="panel">
+        <h2>Export request review</h2>
+        {status === 'idle' && <p>Authenticated staff can request exports only after authorization and provider validation.</p>}
+        {status === 'requested' && <p className="success-message">Export request created. The actor is derived from the authenticated session and no public URL is generated.</p>}
+        {status === 'denied' && <p className="error-message">Access denied: your role or organization context does not permit this export scope.</p>}
+        {status === 'disconnected' && <p className="warning-message">The provider is disconnected. No file exists and no public export URL is generated.</p>}
+      </div>
+    </div>
+  )
+}
+
+function ExportAuditHistoryPage({ currentUserId, roleCode: _roleCode }: { currentUserId: string | null, roleCode: string | null }) {
+  const history = [
+    {
+      id: 'evt-1',
+      eventType: 'generated',
+      actorUserId: currentUserId ?? 'auth-user',
+      fileName: 'verification-export.csv',
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'evt-2',
+      eventType: 'downloaded',
+      actorUserId: currentUserId ?? 'auth-user',
+      fileName: 'verification-export.csv',
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+    },
+  ]
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Compliance</p>
+          <h1>Export Audit History</h1>
+        </div>
+      </div>
+
+      <div className="panel table-panel">
+        <table className="data-table">
+          <thead>
+            <tr><th>Event</th><th>Actor</th><th>File</th><th>Time</th></tr>
+          </thead>
+          <tbody>
+            {history.map((entry) => (
+              <tr key={entry.id}>
+                <td>{entry.eventType}</td>
+                <td>{entry.actorUserId}</td>
+                <td>{entry.fileName}</td>
+                <td>{new Date(entry.createdAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
