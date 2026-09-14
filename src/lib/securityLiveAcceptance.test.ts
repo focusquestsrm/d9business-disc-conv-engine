@@ -11,15 +11,16 @@ const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null;
 
   const normalized = normalizeSource(fn.prosrc)
   const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
+  const argNames = fn.proargnames ?? []
 
-  const hasCanonicalSignature = fn.proargnames.length === 5
-    && fn.proargnames[0] === 'p_resource_type'
-    && fn.proargnames[1] === 'p_export_scope'
-    && fn.proargnames[2] === 'p_target_tenant_id'
-    && fn.proargnames[3] === 'p_request_reason'
-    && fn.proargnames[4] === 'p_expires_at'
+  const hasCanonicalSignature = argNames.length === 5
+    && argNames[0] === 'p_resource_type'
+    && argNames[1] === 'p_export_scope'
+    && argNames[2] === 'p_target_tenant_id'
+    && argNames[3] === 'p_request_reason'
+    && argNames[4] === 'p_expires_at'
 
-  const hasNoActorArgument = !!fn.proargnames && forbidden.every((name) => !fn.proargnames.includes(name))
+  const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
   const hasAuthUid = normalized.includes('auth.uid()') && normalized.includes('v_actor := auth.uid()')
   const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
   const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
