@@ -54,7 +54,8 @@ WITH substantive_results AS (
            JOIN pg_namespace n ON n.oid = p.pronamespace
            WHERE n.nspname = 'public'
              AND p.proname = 'create_export_request'
-             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND to_regprocedure('public.create_export_request(text,text,uuid,text,timestamptz)') IS NOT NULL
+             AND oidvectortypes(p.proargtypes) = 'text, text, uuid, text, timestamp with time zone'
              AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
                'p_resource_type',
                'p_export_scope',
@@ -77,7 +78,8 @@ WITH substantive_results AS (
            JOIN pg_namespace n ON n.oid = p.pronamespace
            WHERE n.nspname = 'public'
              AND p.proname = 'create_export_request'
-             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND to_regprocedure('public.create_export_request(text,text,uuid,text,timestamptz)') IS NOT NULL
+             AND oidvectortypes(p.proargtypes) = 'text, text, uuid, text, timestamp with time zone'
              AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
                'p_resource_type',
                'p_export_scope',
@@ -100,7 +102,8 @@ WITH substantive_results AS (
            JOIN pg_namespace n ON n.oid = p.pronamespace
            WHERE n.nspname = 'public'
              AND p.proname = 'create_export_request'
-             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND to_regprocedure('public.create_export_request(text,text,uuid,text,timestamptz)') IS NOT NULL
+             AND oidvectortypes(p.proargtypes) = 'text, text, uuid, text, timestamp with time zone'
              AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
                'p_resource_type',
                'p_export_scope',
@@ -126,7 +129,8 @@ WITH substantive_results AS (
            CROSS JOIN LATERAL regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g') AS normalized_source
            WHERE n.nspname = 'public'
              AND p.proname = 'create_export_request'
-             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND to_regprocedure('public.create_export_request(text,text,uuid,text,timestamptz)') IS NOT NULL
+             AND oidvectortypes(p.proargtypes) = 'text, text, uuid, text, timestamp with time zone'
              AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
                'p_resource_type',
                'p_export_scope',
@@ -146,10 +150,13 @@ WITH substantive_results AS (
              AND regexp_like(normalized_source, 'v_actor\s*:=\s*auth\.uid\(\)')
              AND regexp_like(normalized_source, 'if\s+v_actor\s+is\s+null')
              AND regexp_like(normalized_source, 'public\.assert_repository_export_authorization')
+             AND regexp_like(normalized_source, 'insert\s+into\s+public\.export_requests')
              AND regexp_like(normalized_source, 'requested_by')
+             AND regexp_like(normalized_source, 'p_target_tenant_id')
+             AND regexp_like(normalized_source, 'v_actor')
              AND regexp_like(
                normalized_source,
-               'insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)'
+               'insert\s+into\s+public\.export_requests\s*\([^)]*p_target_tenant_id[^)]*requested_by[^)]*\)\s*values\s*\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\)'
              )
          ) THEN 'TRUSTED_ACTOR' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
@@ -159,7 +166,8 @@ WITH substantive_results AS (
            CROSS JOIN LATERAL regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g') AS normalized_source
            WHERE n.nspname = 'public'
              AND p.proname = 'create_export_request'
-             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND to_regprocedure('public.create_export_request(text,text,uuid,text,timestamptz)') IS NOT NULL
+             AND oidvectortypes(p.proargtypes) = 'text, text, uuid, text, timestamp with time zone'
              AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
                'p_resource_type',
                'p_export_scope',
@@ -179,10 +187,13 @@ WITH substantive_results AS (
              AND regexp_like(normalized_source, 'v_actor\s*:=\s*auth\.uid\(\)')
              AND regexp_like(normalized_source, 'if\s+v_actor\s+is\s+null')
              AND regexp_like(normalized_source, 'public\.assert_repository_export_authorization')
+             AND regexp_like(normalized_source, 'insert\s+into\s+public\.export_requests')
              AND regexp_like(normalized_source, 'requested_by')
+             AND regexp_like(normalized_source, 'p_target_tenant_id')
+             AND regexp_like(normalized_source, 'v_actor')
              AND regexp_like(
                normalized_source,
-               'insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)'
+               'insert\s+into\s+public\.export_requests\s*\([^)]*p_target_tenant_id[^)]*requested_by[^)]*\)\s*values\s*\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\)'
              )
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
@@ -192,7 +203,8 @@ WITH substantive_results AS (
            CROSS JOIN LATERAL regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g') AS normalized_source
            WHERE n.nspname = 'public'
              AND p.proname = 'create_export_request'
-             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND to_regprocedure('public.create_export_request(text,text,uuid,text,timestamptz)') IS NOT NULL
+             AND oidvectortypes(p.proargtypes) = 'text, text, uuid, text, timestamp with time zone'
              AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
                'p_resource_type',
                'p_export_scope',
@@ -212,10 +224,13 @@ WITH substantive_results AS (
              AND regexp_like(normalized_source, 'v_actor\s*:=\s*auth\.uid\(\)')
              AND regexp_like(normalized_source, 'if\s+v_actor\s+is\s+null')
              AND regexp_like(normalized_source, 'public\.assert_repository_export_authorization')
+             AND regexp_like(normalized_source, 'insert\s+into\s+public\.export_requests')
              AND regexp_like(normalized_source, 'requested_by')
+             AND regexp_like(normalized_source, 'p_target_tenant_id')
+             AND regexp_like(normalized_source, 'v_actor')
              AND regexp_like(
                normalized_source,
-               'insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)'
+               'insert\s+into\s+public\.export_requests\s*\([^)]*p_target_tenant_id[^)]*requested_by[^)]*\)\s*values\s*\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\)'
              )
          ) THEN 'The function derives the authenticated actor from auth.uid(), rejects anonymous callers, authorizes the operation, and writes v_actor into requested_by.' ELSE 'The function does not reliably derive or write the trusted authenticated actor for export requests.' END
   UNION ALL

@@ -6,25 +6,34 @@ import { assertRepositoryRoleAccess, evaluateSecurityAccess, getRepositoryRoleDe
 
 const normalizeSource = (source: string) => source.replace(/\s+/g, ' ').toLowerCase()
 
-const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null; prosrc?: string | null }) => {
-  const argNames = fn.proargnames ?? []
-  const canonicalArgs = ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at']
-  const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
-
-  const hasCanonicalSignature = argNames.length === canonicalArgs.length
-    && canonicalArgs.every((name, index) => argNames[index] === name)
-
-  const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
-
-  return hasCanonicalSignature && hasNoActorArgument
+type FunctionLike = {
+  proargnames?: string[] | null
+  prosrc?: string | null
+  argumentTypes?: string | null
+  identityArguments?: string | null
 }
 
-const createExportRequestTrustedActorAttribution = (fn: { proargnames?: string[] | null; prosrc?: string | null }) => {
+const canonicalArgs = ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at']
+const canonicalTypes = 'text, text, uuid, text, timestamp with time zone'
+const canonicalIdentityArguments = 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone'
+const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
+
+const createExportRequestNoClientActorId = (fn: FunctionLike) => {
+  const argNames = fn.proargnames ?? []
+  const hasCanonicalTypes = (fn.argumentTypes ?? '').trim().toLowerCase() === canonicalTypes
+  const hasIdentityArguments = (fn.identityArguments ?? '').trim().toLowerCase() === canonicalIdentityArguments
+  const hasCanonicalSignature = argNames.length === canonicalArgs.length
+    && canonicalArgs.every((name, index) => argNames[index] === name)
+  const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
+
+  return hasCanonicalTypes && hasIdentityArguments && hasCanonicalSignature && hasNoActorArgument
+}
+
+const createExportRequestTrustedActorAttribution = (fn: FunctionLike) => {
   const argNames = fn.proargnames ?? []
   const normalized = normalizeSource(fn.prosrc ?? '')
-  const canonicalArgs = ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at']
-  const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
-
+  const hasCanonicalTypes = (fn.argumentTypes ?? '').trim().toLowerCase() === canonicalTypes
+  const hasIdentityArguments = (fn.identityArguments ?? '').trim().toLowerCase() === canonicalIdentityArguments
   const hasCanonicalSignature = argNames.length === canonicalArgs.length
     && canonicalArgs.every((name, index) => argNames[index] === name)
   const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
@@ -32,9 +41,10 @@ const createExportRequestTrustedActorAttribution = (fn: { proargnames?: string[]
   const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
   const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
   const mentionsRequestedBy = normalized.includes('requested_by')
+  const writesVActorAfterTargetTenant = /insert\s+into\s+public\.export_requests\s*\([^)]*p_target_tenant_id[^)]*requested_by[^)]*\)\s*values\s*\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\)/.test(normalized)
   const writesVActorAsRequestor = /insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)/.test(normalized)
 
-  return hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && mentionsRequestedBy && writesVActorAsRequestor
+  return hasCanonicalTypes && hasIdentityArguments && hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && mentionsRequestedBy && writesVActorAfterTargetTenant && writesVActorAsRequestor
 }
 
 describe('release 3F security and live acceptance', () => {
@@ -64,6 +74,9 @@ describe('release 3F security and live acceptance', () => {
     expect(verifierSql).toContain('public.export_audit_events')
     expect(verifierSql).toContain('overall_status')
     expect(verifierSql).toContain('public.record_export_download(uuid,text)')
+    expect(verifierSql).toContain('oidvectortypes(p.proargtypes) = \'text, text, uuid, text, timestamp with time zone\'')
+    expect(verifierSql).toContain("ARRAY[\n  'p_resource_type',\n  'p_export_scope',\n  'p_target_tenant_id',\n  'p_request_reason',\n  'p_expires_at'\n]")
+    expect(verifierSql).not.toContain('pg_get_function_identity_arguments(p.oid) = \'text, text, uuid, text, timestamp with time zone\'')
     expect(verifierSql).toContain('array_position(p.proargnames, \'p_actor_id\') IS NULL')
     expect(verifierSql).toContain("array_position(p.proargnames, 'p_requested_by') IS NULL")
     expect(verifierSql).not.toContain('public.record_export_download(uuid,text,uuid)')
@@ -107,11 +120,15 @@ describe('release 3F security and live acceptance', () => {
     `
 
     const canonical = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource,
     }
 
     const liveDiagnosticMatch = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: `
         v_actor := auth.uid();
@@ -144,36 +161,50 @@ describe('release 3F security and live acceptance', () => {
     }
 
     const staleActor = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_actor_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource,
     }
 
     const staleRequestedBy = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_requested_by', 'p_expires_at'],
       prosrc: canonicalSource,
     }
 
     const targetTenantAllowed = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource,
     }
 
     const targetTenantUsedAsActor = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource,
     }
 
     const clientControlledRequestor = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource.replace('v_actor,', 'p_request_reason,').replace("'actor_user_id', v_actor::text", "'actor_user_id', p_request_reason::text"),
     }
 
     const noAuthUid = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource.replace('v_actor := auth.uid();', 'v_actor := null;'),
     }
 
     const wrongAttribution = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource.replace('v_actor,', "'system',").replace("'actor_user_id', v_actor::text", "'actor_user_id', 'system'::text"),
     }
