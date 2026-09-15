@@ -19,9 +19,19 @@ const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null;
   const hasAuthUid = normalized.includes('auth.uid()') && normalized.includes('v_actor := auth.uid()')
   const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
   const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
-  const insertWithRequestedByAndVActor = /insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\)/.test(normalized)
 
-  return hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && insertWithRequestedByAndVActor
+  const insertFixtureMatch = /insert\s+into\s+public\.export_requests\s*\((?:[^)]*requested_by[^)]*)\)\s*values\s*\((?:[^)]*p_target_tenant_id[^)]*v_actor[^)]*)\)/.test(normalized)
+  const usesRequestorAttributeInInsert = normalized.includes('requested_by') && normalized.includes('values') && normalized.includes('v_actor')
+  const targetTenantIsNotTreatedAsActor = !normalized.includes('p_target_tenant_id, p_target_tenant_id') && !normalized.includes('p_target_tenant_id, p_target_tenant_id,')
+
+  return hasCanonicalSignature
+    && hasNoActorArgument
+    && hasAuthUid
+    && rejectsAnonymous
+    && assertsAuthorization
+    && insertFixtureMatch
+    && usesRequestorAttributeInInsert
+    && targetTenantIsNotTreatedAsActor
 }
 
 describe('release 3F security and live acceptance', () => {
@@ -140,6 +150,16 @@ describe('release 3F security and live acceptance', () => {
       prosrc: canonicalSource,
     }
 
+    const targetTenantUsedAsActor = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: canonicalSource.replace('v_actor,', 'p_target_tenant_id,').replace("'actor_user_id', v_actor::text", "'actor_user_id', p_target_tenant_id::text"),
+    }
+
+    const clientControlledRequestor = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: canonicalSource.replace('v_actor,', 'p_request_reason,').replace("'actor_user_id', v_actor::text", "'actor_user_id', p_request_reason::text"),
+    }
+
     const noAuthUid = {
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
       prosrc: canonicalSource.replace('v_actor := auth.uid();', 'v_actor := null;'),
@@ -154,6 +174,8 @@ describe('release 3F security and live acceptance', () => {
     expect(createExportRequestNoClientActorId(liveDiagnosticMatch)).toBe(true)
     expect(createExportRequestNoClientActorId(staleActor)).toBe(false)
     expect(createExportRequestNoClientActorId(staleRequestedBy)).toBe(false)
+    expect(createExportRequestNoClientActorId(targetTenantUsedAsActor)).toBe(false)
+    expect(createExportRequestNoClientActorId(clientControlledRequestor)).toBe(false)
     expect(createExportRequestNoClientActorId(noAuthUid)).toBe(false)
     expect(createExportRequestNoClientActorId(wrongAttribution)).toBe(false)
   })
