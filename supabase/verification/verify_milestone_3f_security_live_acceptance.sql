@@ -142,14 +142,14 @@ WITH substantive_results AS (
              AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
-             AND position('auth.uid()' in normalized_source) > 0
-             AND position('v_actor := auth.uid()' in normalized_source) > 0
-             AND position('if v_actor is null' in normalized_source) > 0
-             AND position('public.assert_repository_export_authorization' in normalized_source) > 0
-             AND position('requested_by' in normalized_source) > 0
+             AND regexp_like(normalized_source, 'auth\.uid\(\)')
+             AND regexp_like(normalized_source, 'v_actor\s*:=\s*auth\.uid\(\)')
+             AND regexp_like(normalized_source, 'if\s+v_actor\s+is\s+null')
+             AND regexp_like(normalized_source, 'public\.assert_repository_export_authorization')
+             AND regexp_like(normalized_source, 'requested_by')
              AND regexp_like(
                normalized_source,
-               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*v_actor[^)]*\\)'
+               'insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)'
              )
          ) THEN 'TRUSTED_ACTOR' ELSE 'MISSING' END,
          CASE WHEN EXISTS (
@@ -175,14 +175,14 @@ WITH substantive_results AS (
              AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
-             AND position('auth.uid()' in normalized_source) > 0
-             AND position('v_actor := auth.uid()' in normalized_source) > 0
-             AND position('if v_actor is null' in normalized_source) > 0
-             AND position('public.assert_repository_export_authorization' in normalized_source) > 0
-             AND position('requested_by' in normalized_source) > 0
+             AND regexp_like(normalized_source, 'auth\.uid\(\)')
+             AND regexp_like(normalized_source, 'v_actor\s*:=\s*auth\.uid\(\)')
+             AND regexp_like(normalized_source, 'if\s+v_actor\s+is\s+null')
+             AND regexp_like(normalized_source, 'public\.assert_repository_export_authorization')
+             AND regexp_like(normalized_source, 'requested_by')
              AND regexp_like(
                normalized_source,
-               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*v_actor[^)]*\\)'
+               'insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)'
              )
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
@@ -208,14 +208,14 @@ WITH substantive_results AS (
              AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
-             AND position('auth.uid()' in normalized_source) > 0
-             AND position('v_actor := auth.uid()' in normalized_source) > 0
-             AND position('if v_actor is null' in normalized_source) > 0
-             AND position('public.assert_repository_export_authorization' in normalized_source) > 0
-             AND position('requested_by' in normalized_source) > 0
+             AND regexp_like(normalized_source, 'auth\.uid\(\)')
+             AND regexp_like(normalized_source, 'v_actor\s*:=\s*auth\.uid\(\)')
+             AND regexp_like(normalized_source, 'if\s+v_actor\s+is\s+null')
+             AND regexp_like(normalized_source, 'public\.assert_repository_export_authorization')
+             AND regexp_like(normalized_source, 'requested_by')
              AND regexp_like(
                normalized_source,
-               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*v_actor[^)]*\\)'
+               'insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)'
              )
          ) THEN 'The function derives the authenticated actor from auth.uid(), rejects anonymous callers, authorizes the operation, and writes v_actor into requested_by.' ELSE 'The function does not reliably derive or write the trusted authenticated actor for export requests.' END
   UNION ALL
