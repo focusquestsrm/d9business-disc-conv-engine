@@ -52,7 +52,6 @@ WITH substantive_results AS (
            SELECT 1
            FROM pg_proc p
            JOIN pg_namespace n ON n.oid = p.pronamespace
-           CROSS JOIN LATERAL regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g') AS normalized_source
            WHERE n.nspname = 'public'
              AND p.proname = 'create_export_request'
              AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
@@ -71,16 +70,55 @@ WITH substantive_results AS (
              AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
              AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
-             AND position('auth.uid()' in normalized_source) > 0
-             AND position('v_actor := auth.uid()' in normalized_source) > 0
-             AND position('if v_actor is null' in normalized_source) > 0
-             AND position('insert into public.export_requests' in normalized_source) > 0
-             AND position('requested_by' in normalized_source) > 0
-             AND regexp_like(
-               normalized_source,
-               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\\)'
-             )
          ) THEN 'NO_CLIENT_ID' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public'
+             AND p.proname = 'create_export_request'
+             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
+               'p_resource_type',
+               'p_export_scope',
+               'p_target_tenant_id',
+               'p_request_reason',
+               'p_expires_at'
+             ]
+             AND 'p_actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+         ) THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public'
+             AND p.proname = 'create_export_request'
+             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
+               'p_resource_type',
+               'p_export_scope',
+               'p_target_tenant_id',
+               'p_request_reason',
+               'p_expires_at'
+             ]
+             AND 'p_actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+         ) THEN 'The function signature prohibits client actor input arguments while allowing the target tenant input.' ELSE 'The function signature still exposes a client actor input argument.' END
+  UNION ALL
+  SELECT 'SECURITY', 'public.create_export_request', 'trusted_actor_attribution', 'TRUSTED_ACTOR',
          CASE WHEN EXISTS (
            SELECT 1
            FROM pg_proc p
@@ -107,11 +145,44 @@ WITH substantive_results AS (
              AND position('auth.uid()' in normalized_source) > 0
              AND position('v_actor := auth.uid()' in normalized_source) > 0
              AND position('if v_actor is null' in normalized_source) > 0
-             AND position('insert into public.export_requests' in normalized_source) > 0
+             AND position('public.assert_repository_export_authorization' in normalized_source) > 0
              AND position('requested_by' in normalized_source) > 0
              AND regexp_like(
                normalized_source,
-               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\\)'
+               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*v_actor[^)]*\\)'
+             )
+         ) THEN 'TRUSTED_ACTOR' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           CROSS JOIN LATERAL regexp_replace(lower(COALESCE(p.prosrc, '')), '\s+', ' ', 'g') AS normalized_source
+           WHERE n.nspname = 'public'
+             AND p.proname = 'create_export_request'
+             AND pg_get_function_identity_arguments(p.oid) = 'text, text, uuid, text, timestamp with time zone'
+             AND COALESCE(p.proargnames, ARRAY[]::text[]) = ARRAY[
+               'p_resource_type',
+               'p_export_scope',
+               'p_target_tenant_id',
+               'p_request_reason',
+               'p_expires_at'
+             ]
+             AND 'p_actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'p_downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'actor_id' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'requested_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'generated_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND 'downloaded_by' <> ALL(COALESCE(p.proargnames, ARRAY[]::text[]))
+             AND position('auth.uid()' in normalized_source) > 0
+             AND position('v_actor := auth.uid()' in normalized_source) > 0
+             AND position('if v_actor is null' in normalized_source) > 0
+             AND position('public.assert_repository_export_authorization' in normalized_source) > 0
+             AND position('requested_by' in normalized_source) > 0
+             AND regexp_like(
+               normalized_source,
+               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*v_actor[^)]*\\)'
              )
          ) THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN EXISTS (
@@ -140,13 +211,13 @@ WITH substantive_results AS (
              AND position('auth.uid()' in normalized_source) > 0
              AND position('v_actor := auth.uid()' in normalized_source) > 0
              AND position('if v_actor is null' in normalized_source) > 0
-             AND position('insert into public.export_requests' in normalized_source) > 0
+             AND position('public.assert_repository_export_authorization' in normalized_source) > 0
              AND position('requested_by' in normalized_source) > 0
              AND regexp_like(
                normalized_source,
-               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\\)'
+               'insert\\s+into\\s+public\\.export_requests\\s*\\([^)]*requested_by[^)]*\\)\\s*values\\s*\\([^)]*v_actor[^)]*\\)'
              )
-         ) THEN 'The request function derives the actor from auth.uid(), rejects anonymous callers, asserts authorization, and writes requested_by from the authenticated actor.' ELSE 'The request function still permits a client-supplied actor ID.' END
+         ) THEN 'The function derives the authenticated actor from auth.uid(), rejects anonymous callers, authorizes the operation, and writes v_actor into requested_by.' ELSE 'The function does not reliably derive or write the trusted authenticated actor for export requests.' END
   UNION ALL
   SELECT 'SECURITY', 'public.record_export_download', 'no_client_actor_id', 'NO_CLIENT_ID',
          CASE WHEN EXISTS (

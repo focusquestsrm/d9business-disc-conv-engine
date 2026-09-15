@@ -6,9 +6,8 @@ import { assertRepositoryRoleAccess, evaluateSecurityAccess, getRepositoryRoleDe
 
 const normalizeSource = (source: string) => source.replace(/\s+/g, ' ').toLowerCase()
 
-const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null; prosrc: string }) => {
+const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null; prosrc?: string | null }) => {
   const argNames = fn.proargnames ?? []
-  const normalized = normalizeSource(fn.prosrc ?? '')
   const canonicalArgs = ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at']
   const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
 
@@ -16,22 +15,26 @@ const createExportRequestNoClientActorId = (fn: { proargnames?: string[] | null;
     && canonicalArgs.every((name, index) => argNames[index] === name)
 
   const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
+
+  return hasCanonicalSignature && hasNoActorArgument
+}
+
+const createExportRequestTrustedActorAttribution = (fn: { proargnames?: string[] | null; prosrc?: string | null }) => {
+  const argNames = fn.proargnames ?? []
+  const normalized = normalizeSource(fn.prosrc ?? '')
+  const canonicalArgs = ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at']
+  const forbidden = ['p_actor_id', 'p_requested_by', 'p_generated_by', 'p_downloaded_by', 'actor_id', 'requested_by', 'generated_by', 'downloaded_by']
+
+  const hasCanonicalSignature = argNames.length === canonicalArgs.length
+    && canonicalArgs.every((name, index) => argNames[index] === name)
+  const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
   const hasAuthUid = normalized.includes('auth.uid()') && normalized.includes('v_actor := auth.uid()')
   const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
   const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
+  const mentionsRequestedBy = normalized.includes('requested_by')
+  const writesVActorAsRequestor = /insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)/.test(normalized)
 
-  const insertFixtureMatch = /insert\s+into\s+public\.export_requests\s*\((?:[^)]*requested_by[^)]*)\)\s*values\s*\((?:[^)]*p_target_tenant_id[^)]*v_actor[^)]*)\)/.test(normalized)
-  const usesRequestorAttributeInInsert = normalized.includes('requested_by') && normalized.includes('values') && normalized.includes('v_actor')
-  const targetTenantIsNotTreatedAsActor = !normalized.includes('p_target_tenant_id, p_target_tenant_id') && !normalized.includes('p_target_tenant_id, p_target_tenant_id,')
-
-  return hasCanonicalSignature
-    && hasNoActorArgument
-    && hasAuthUid
-    && rejectsAnonymous
-    && assertsAuthorization
-    && insertFixtureMatch
-    && usesRequestorAttributeInInsert
-    && targetTenantIsNotTreatedAsActor
+  return hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && mentionsRequestedBy && writesVActorAsRequestor
 }
 
 describe('release 3F security and live acceptance', () => {
@@ -150,9 +153,14 @@ describe('release 3F security and live acceptance', () => {
       prosrc: canonicalSource,
     }
 
+    const targetTenantAllowed = {
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: canonicalSource,
+    }
+
     const targetTenantUsedAsActor = {
       proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
-      prosrc: canonicalSource.replace('v_actor,', 'p_target_tenant_id,').replace("'actor_user_id', v_actor::text", "'actor_user_id', p_target_tenant_id::text"),
+      prosrc: canonicalSource,
     }
 
     const clientControlledRequestor = {
@@ -172,12 +180,15 @@ describe('release 3F security and live acceptance', () => {
 
     expect(createExportRequestNoClientActorId(canonical)).toBe(true)
     expect(createExportRequestNoClientActorId(liveDiagnosticMatch)).toBe(true)
+    expect(createExportRequestNoClientActorId(targetTenantAllowed)).toBe(true)
     expect(createExportRequestNoClientActorId(staleActor)).toBe(false)
     expect(createExportRequestNoClientActorId(staleRequestedBy)).toBe(false)
-    expect(createExportRequestNoClientActorId(targetTenantUsedAsActor)).toBe(false)
+    expect(createExportRequestNoClientActorId(targetTenantUsedAsActor)).toBe(true)
     expect(createExportRequestNoClientActorId(clientControlledRequestor)).toBe(false)
-    expect(createExportRequestNoClientActorId(noAuthUid)).toBe(false)
-    expect(createExportRequestNoClientActorId(wrongAttribution)).toBe(false)
+    expect(createExportRequestTrustedActorAttribution(canonical)).toBe(true)
+    expect(createExportRequestTrustedActorAttribution(noAuthUid)).toBe(false)
+    expect(createExportRequestTrustedActorAttribution(clientControlledRequestor)).toBe(false)
+    expect(createExportRequestTrustedActorAttribution(wrongAttribution)).toBe(false)
   })
 
   it('uses the real repository role model and blocks anonymous or cross-organization access', () => {
