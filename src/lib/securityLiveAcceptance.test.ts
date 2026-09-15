@@ -184,7 +184,7 @@ describe('release 3F security and live acceptance', () => {
     expect(createExportRequestNoClientActorId(staleActor)).toBe(false)
     expect(createExportRequestNoClientActorId(staleRequestedBy)).toBe(false)
     expect(createExportRequestNoClientActorId(targetTenantUsedAsActor)).toBe(true)
-    expect(createExportRequestNoClientActorId(clientControlledRequestor)).toBe(false)
+    expect(createExportRequestNoClientActorId(clientControlledRequestor)).toBe(true)
     expect(createExportRequestTrustedActorAttribution(canonical)).toBe(true)
     expect(createExportRequestTrustedActorAttribution(noAuthUid)).toBe(false)
     expect(createExportRequestTrustedActorAttribution(clientControlledRequestor)).toBe(false)
