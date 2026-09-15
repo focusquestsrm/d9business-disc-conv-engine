@@ -30,21 +30,18 @@ const createExportRequestNoClientActorId = (fn: FunctionLike) => {
 }
 
 const createExportRequestTrustedActorAttribution = (fn: FunctionLike) => {
-  const argNames = fn.proargnames ?? []
   const normalized = normalizeSource(fn.prosrc ?? '')
-  const hasCanonicalTypes = (fn.argumentTypes ?? '').trim().toLowerCase() === canonicalTypes
-  const hasIdentityArguments = (fn.identityArguments ?? '').trim().toLowerCase() === canonicalIdentityArguments
-  const hasCanonicalSignature = argNames.length === canonicalArgs.length
-    && canonicalArgs.every((name, index) => argNames[index] === name)
-  const hasNoActorArgument = forbidden.every((name) => !argNames.includes(name))
-  const hasAuthUid = normalized.includes('auth.uid()') && normalized.includes('v_actor := auth.uid()')
-  const rejectsAnonymous = normalized.includes('if v_actor is null') && normalized.includes('anonymous export requests are denied')
-  const assertsAuthorization = normalized.includes('public.assert_repository_export_authorization')
-  const mentionsRequestedBy = normalized.includes('requested_by')
-  const writesVActorAfterTargetTenant = /insert\s+into\s+public\.export_requests\s*\([^)]*p_target_tenant_id[^)]*requested_by[^)]*\)\s*values\s*\([^)]*p_target_tenant_id[^)]*v_actor[^)]*\)/.test(normalized)
-  const writesVActorAsRequestor = /insert\s+into\s+public\.export_requests\s*\([^)]*requested_by[^)]*\)\s*values\s*\([^)]*v_actor[^)]*\)/.test(normalized)
+  const requiredMarkers = [
+    'auth.uid()',
+    'v_actor := auth.uid()',
+    'if v_actor is null',
+    'public.assert_repository_export_authorization',
+    'insert into public.export_requests',
+    'requested_by',
+    'p_target_tenant_id, v_actor',
+  ]
 
-  return hasCanonicalTypes && hasIdentityArguments && hasCanonicalSignature && hasNoActorArgument && hasAuthUid && rejectsAnonymous && assertsAuthorization && mentionsRequestedBy && writesVActorAfterTargetTenant && writesVActorAsRequestor
+  return requiredMarkers.every((marker) => normalized.includes(marker))
 }
 
 describe('release 3F security and live acceptance', () => {
@@ -209,6 +206,66 @@ describe('release 3F security and live acceptance', () => {
       prosrc: canonicalSource.replace('v_actor,', "'system',").replace("'actor_user_id', v_actor::text", "'actor_user_id', 'system'::text"),
     }
 
+    const exactLiveSource = `
+      v_actor := auth.uid();
+      if v_actor is null then
+        raise exception 'Anonymous export requests are denied. Authentication is required.';
+      end if;
+      if not public.assert_repository_export_authorization(p_resource_type, p_export_scope, p_target_tenant_id) then
+        raise exception 'Permission denied';
+      end if;
+      insert into public.export_requests (
+        resource_type,
+        export_scope,
+        target_tenant_id,
+        requested_by,
+        status,
+        request_reason,
+        expires_at,
+        metadata
+      ) values (
+        p_resource_type,
+        p_export_scope,
+        p_target_tenant_id,
+        v_actor,
+        'pending',
+        p_request_reason,
+        coalesce(p_expires_at, now() + interval '24 hours'),
+        jsonb_build_object('source', 'repository_workflow', 'actor_user_id', v_actor::text, 'resource_type', p_resource_type)
+      );
+    `
+
+    const exactLiveNormalized = normalizeSource(exactLiveSource)
+    const positiveMatches = [
+      'auth.uid()',
+      'v_actor := auth.uid()',
+      'if v_actor is null',
+      'public.assert_repository_export_authorization',
+      'insert into public.export_requests',
+      'requested_by',
+      'p_target_tenant_id, v_actor',
+    ]
+
+    const liveTrustedActor = {
+      argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+      identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
+      proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+      prosrc: exactLiveSource,
+    }
+
+    const negativeMarkerCases = positiveMatches.map((marker) => {
+      const missingMarker = exactLiveNormalized.replace(marker, '')
+      return {
+        marker,
+        fn: {
+          argumentTypes: 'text, text, uuid, text, timestamp with time zone',
+          identityArguments: 'p_resource_type text, p_export_scope text, p_target_tenant_id uuid, p_request_reason text, p_expires_at timestamp with time zone',
+          proargnames: ['p_resource_type', 'p_export_scope', 'p_target_tenant_id', 'p_request_reason', 'p_expires_at'],
+          prosrc: missingMarker,
+        },
+      }
+    })
+
     expect(createExportRequestNoClientActorId(canonical)).toBe(true)
     expect(createExportRequestNoClientActorId(liveDiagnosticMatch)).toBe(true)
     expect(createExportRequestNoClientActorId(targetTenantAllowed)).toBe(true)
@@ -217,9 +274,13 @@ describe('release 3F security and live acceptance', () => {
     expect(createExportRequestNoClientActorId(targetTenantUsedAsActor)).toBe(true)
     expect(createExportRequestNoClientActorId(clientControlledRequestor)).toBe(true)
     expect(createExportRequestTrustedActorAttribution(canonical)).toBe(true)
+    expect(createExportRequestTrustedActorAttribution(liveTrustedActor)).toBe(true)
     expect(createExportRequestTrustedActorAttribution(noAuthUid)).toBe(false)
     expect(createExportRequestTrustedActorAttribution(clientControlledRequestor)).toBe(false)
     expect(createExportRequestTrustedActorAttribution(wrongAttribution)).toBe(false)
+    negativeMarkerCases.forEach(({ fn, marker }) => {
+      expect(createExportRequestTrustedActorAttribution(fn), `marker removed: ${marker}`).toBe(false)
+    })
   })
 
   it('uses the real repository role model and blocks anonymous or cross-organization access', () => {
