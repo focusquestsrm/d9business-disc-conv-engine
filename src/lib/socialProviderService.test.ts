@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { getSafeMetaConfig, getSecureProviderStatus, getSecureProviderStatusAsync, getSecureDestinationSummary, getSecureDestinationSummaryAsync, normalizeProviderFailure, normalizeProviderWebhook, approvePublishingDecision } from './socialProviderService'
+import {
+  approvePublishingDecision,
+  evaluateSocialEligibility,
+  getSafeMetaConfig,
+  getSecureDestinationSummary,
+  getSecureDestinationSummaryAsync,
+  getSecureProviderStatus,
+  getSecureProviderStatusAsync,
+  normalizeProviderFailure,
+  normalizeProviderWebhook,
+  requestSocialPublishingReview,
+} from './socialProviderService'
 
 describe('secure social provider foundation', () => {
   it('returns a secure configuration_required state when credentials are absent', () => {
@@ -63,5 +74,38 @@ describe('secure social provider foundation', () => {
     const status = await getSecureProviderStatusAsync()
     expect(status.state).toBe('configuration_required')
     expect(status.requiresConfiguration).toBe(true)
+  })
+
+  it('blocks submission when consent, opt-out, suppression, cooldown, or capability checks fail', () => {
+    const eligibility = evaluateSocialEligibility({
+      consentGranted: false,
+      optOutActive: true,
+      suppressionActive: true,
+      cooldownOk: false,
+      connectionState: 'disconnected',
+      destinationState: 'disabled',
+      capabilitySupported: false,
+      hasApprovedContent: true,
+      contentVersionMatches: true,
+    })
+
+    expect(eligibility.eligible).toBe(false)
+    expect(eligibility.reasons.length).toBeGreaterThan(0)
+    expect(eligibility.status).toBe('blocked')
+  })
+
+  it('uses the protected server boundary instead of fabricating provider success', async () => {
+    const result = await requestSocialPublishingReview({
+      prospectId: 'prospect-123',
+      destinationId: 'dest-1',
+      action: 'post',
+      content: 'Hello world',
+      schedule: new Date(Date.now() + 3600000).toISOString(),
+      note: 'Internal note',
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.state).toBe('configuration_required')
+    expect(result.reason).toMatch(/configured|blocked/i)
   })
 })

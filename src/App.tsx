@@ -42,7 +42,22 @@ import { buildVerificationWorkbook, parseVerificationWorkbook } from './lib/veri
 import { buildWorkQueueSummary, filterWorkItems, normalizeWorkItem } from './lib/workqueue'
 import { createExportAuditState, exportAuditRepository } from './lib/exportAuditRepository'
 import { getSecurityStatusSummary } from './lib/securityLiveAcceptance'
-import { approvePublishingDecision, getSecureDestinationSummary, getSecureProviderStatus, normalizeProviderWebhook } from './lib/socialProviderService'
+import {
+  approvePublishingDecision,
+  approveSocialContent,
+  buildSafeActivityFeed,
+  buildSafeConnectionHealthSummary,
+  buildSafeInboundActivity,
+  buildSafeScheduledPosts,
+  buildSafeSocialPublishingQueue,
+  evaluateSocialEligibility,
+  getSecureDestinationSummary,
+  getSecureProviderStatus,
+  normalizeProviderWebhook,
+  requestSocialPublishingReview,
+  returnSocialContent,
+  rejectSocialContent,
+} from './lib/socialProviderService'
 
 type NavItem = {
   label: string
@@ -572,6 +587,26 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <PublishingQueuePage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/social-workflow"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <SocialWorkflowPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/social-content-approval"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <SocialApprovalPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -4864,22 +4899,19 @@ function SocialConnectionsPage() {
 }
 
 function PublishingQueuePage() {
-  const [records] = useState<Array<{ id: string; title: string; status: string; provider: string; approved: boolean }>>([
-    { id: 'job-1', title: 'Northside Studio weekly post', status: 'approved', provider: 'meta', approved: true },
-    { id: 'job-2', title: 'Campaign announcement', status: 'scheduled', provider: 'meta', approved: true },
-  ])
-
+  const records = buildSafeSocialPublishingQueue()
+  const providerStatus = getSecureProviderStatus()
   const decision = approvePublishingDecision({
-    contentApproved: true,
+    contentApproved: providerStatus.state === 'connected',
     actorAuthorized: true,
-    destinationConnected: false,
+    destinationConnected: providerStatus.state === 'connected',
     consentGranted: true,
     optOutActive: false,
     frequencyOk: true,
-    providerAllowed: true,
+    providerAllowed: providerStatus.state === 'connected',
     hasAssetRights: true,
     d9AffiliationApproved: true,
-    providerState: 'disconnected',
+    providerState: providerStatus.state,
     scheduledAt: new Date().toISOString(),
   })
 
@@ -4891,8 +4923,8 @@ function PublishingQueuePage() {
         <p>{decision.state === 'ready' ? 'Queue is ready for provider dispatch.' : `Queue is blocked: ${decision.reason}`}</p>
         <div className="table-panel">
           {records.length ? (
-            <table className="data-table"><thead><tr><th>Title</th><th>Status</th><th>Provider</th><th>Approval</th></tr></thead><tbody>{records.map((record) => (
-              <tr key={record.id}><td>{record.title}</td><td>{record.status}</td><td>{record.provider}</td><td>{record.approved ? 'approved' : 'pending'}</td></tr>
+            <table className="data-table"><thead><tr><th>Title</th><th>Status</th><th>Provider</th><th>Approval</th></tr></thead><tbody>{records.map((record: { id: string; title: string; status: string; provider: string; approvalState: string }) => (
+              <tr key={record.id}><td>{record.title}</td><td>{record.status}</td><td>{record.provider}</td><td>{record.approvalState}</td></tr>
             ))}</tbody></table>
           ) : <div className="empty-state"><h2>No queued posts</h2><p>No approved posts are waiting for provider publishing.</p></div>}
         </div>
@@ -4902,9 +4934,7 @@ function PublishingQueuePage() {
 }
 
 function ScheduledPostsPage() {
-  const [items] = useState<Array<{ id: string; title: string; scheduled: string; status: string }>>([
-    { id: 'schedule-1', title: 'Northside Studio business highlight', scheduled: new Date(Date.now() + 86400000).toISOString(), status: 'scheduled' },
-  ])
+  const items = buildSafeScheduledPosts()
 
   return (
     <div className="page">
@@ -4917,10 +4947,7 @@ function ScheduledPostsPage() {
 }
 
 function PublishedFailedActivityPage() {
-  const [items] = useState<Array<{ id: string; title: string; status: string; providerStatus: string }>>([
-    { id: 'activity-1', title: 'Verified neighborhood business post', status: 'published', providerStatus: 'publisher_not_configured' },
-    { id: 'activity-2', title: 'Delayed campaign announcement', status: 'failed', providerStatus: 'provider_error' },
-  ])
+  const items = buildSafeActivityFeed()
 
   return (
     <div className="page">
@@ -4933,7 +4960,8 @@ function PublishedFailedActivityPage() {
 }
 
 function InboundActivityPage() {
-  const webhook = normalizeProviderWebhook({ object: 'page', type: 'messages', entry: [{ id: 'evt-123' }], page_id: 'page-1', account_id: 'acct-1' })
+  const inbound = buildSafeInboundActivity()
+  const webhook = inbound.length ? normalizeProviderWebhook({ object: 'page', type: 'messages', entry: [{ id: inbound[0].eventId ?? 'evt-123' }], page_id: inbound[0].pageId ?? 'page-1', account_id: inbound[0].accountId ?? 'acct-1' }) : normalizeProviderWebhook({ object: 'page', type: 'messages', entry: [{ id: 'evt-123' }], page_id: 'page-1', account_id: 'acct-1' })
   return (
     <div className="page">
       <div className="page-header"><div><p className="eyebrow">Inbound</p><h1>Inbound Activity</h1></div></div>
@@ -4942,29 +4970,198 @@ function InboundActivityPage() {
         <p><strong>Provider:</strong> {webhook.provider}</p>
         <p><strong>Event type:</strong> {webhook.eventType}</p>
         <p><strong>Event ID:</strong> {webhook.eventId ?? 'pending'}</p>
-        <p><strong>Status:</strong> {webhook.status}</p>
+        <p><strong>Status:</strong> {inbound.length ? 'received' : webhook.status}</p>
       </div>
     </div>
   )
 }
 
 function ConnectionHealthPage() {
-  const status = getSecureProviderStatus()
-  const destinations = getSecureDestinationSummary()
+  const summary = buildSafeConnectionHealthSummary()
+  const { providerStatus, destinations } = summary
 
   return (
     <div className="page">
       <div className="page-header"><div><p className="eyebrow">Diagnostics</p><h1>Connection Health</h1></div></div>
       <div className="panel">
         <h2>Provider state</h2>
-        <p><strong>State:</strong> {status.state}</p>
-        <p><strong>Last successful provider check:</strong> {status.lastSuccessfulProviderCheck ?? 'not available yet'}</p>
-        <p><strong>Safe metadata:</strong> {JSON.stringify(status.safeMetadata)}</p>
-        <p><strong>Next action:</strong> {status.reason}</p>
+        <p><strong>State:</strong> {providerStatus.state}</p>
+        <p><strong>Last successful provider check:</strong> {providerStatus.lastSuccessfulProviderCheck ?? 'not available yet'}</p>
+        <p><strong>Safe metadata:</strong> {JSON.stringify(providerStatus.safeMetadata)}</p>
+        <p><strong>Next action:</strong> {providerStatus.reason}</p>
       </div>
       <div className="panel" style={{ marginTop: '1rem' }}>
         <h2>Destinations</h2>
         <ul>{destinations.length ? destinations.map((destination) => <li key={destination.id}>{destination.name} — {destination.connectionState}</li>) : <li>No destinations available until Meta config is complete.</li>}</ul>
+      </div>
+    </div>
+  )
+}
+
+function SocialWorkflowPage() {
+  const providerStatus = getSecureProviderStatus()
+  const destinations = getSecureDestinationSummary()
+  const [prospectId, setProspectId] = useState('prospect-101')
+  const [businessId, setBusinessId] = useState('business-101')
+  const [destinationId, setDestinationId] = useState(destinations[0]?.id ?? 'destination-meta-page')
+  const [action, setAction] = useState('post')
+  const [content, setContent] = useState('We are pleased to highlight your neighborhood business and share upcoming events.')
+  const [schedule, setSchedule] = useState(new Date(Date.now() + 3600000).toISOString().slice(0, 16))
+  const [note, setNote] = useState('Pending legal and destination review.')
+  const [result, setResult] = useState<{ ok: boolean; state: string; reason: string } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const eligibility = evaluateSocialEligibility({
+    consentGranted: true,
+    optOutActive: false,
+    suppressionActive: false,
+    cooldownOk: true,
+    connectionState: providerStatus.state,
+    destinationState: destinations.some((destination) => destination.id === destinationId && destination.status === 'connected') ? 'connected' : 'disabled',
+    capabilitySupported: true,
+    hasApprovedContent: Boolean(content.trim()),
+    contentVersionMatches: true,
+    reason: providerStatus.reason,
+  })
+
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    const response = await requestSocialPublishingReview({
+      prospectId,
+      businessId,
+      destinationId,
+      action,
+      content,
+      schedule: new Date(schedule).toISOString(),
+      note,
+    })
+    setResult({ ok: response.ok, state: response.state, reason: response.reason })
+    setSubmitting(false)
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Workflow</p><h1>Social Content Preparation</h1></div></div>
+      <div className="panel">
+        <h2>Prepare social engagement item</h2>
+        <div className="button-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          <label>
+            <span>Prospect</span>
+            <select value={prospectId} onChange={(event) => setProspectId(event.target.value)}>
+              <option value="prospect-101">Prospect: Northside Studio</option>
+              <option value="prospect-102">Prospect: Downtown Collective</option>
+            </select>
+          </label>
+          <label>
+            <span>Business</span>
+            <select value={businessId} onChange={(event) => setBusinessId(event.target.value)}>
+              <option value="business-101">Business: Northside Studio</option>
+              <option value="business-102">Business: Downtown Collective</option>
+            </select>
+          </label>
+          <label>
+            <span>Destination</span>
+            <select value={destinationId} onChange={(event) => setDestinationId(event.target.value)}>
+              {destinations.length ? destinations.map((destination) => <option key={destination.id} value={destination.id}>{destination.name}</option>) : <option value="destination-meta-page">Meta business page</option>}
+            </select>
+          </label>
+          <label>
+            <span>Action</span>
+            <select value={action} onChange={(event) => setAction(event.target.value)}>
+              <option value="post">Post</option>
+              <option value="story">Story</option>
+              <option value="comment">Comment</option>
+            </select>
+          </label>
+        </div>
+        <label style={{ display: 'grid', gap: '0.5rem', marginTop: '1rem' }}>
+          <span>Proposed content</span>
+          <textarea value={content} onChange={(event) => setContent(event.target.value)} rows={4} placeholder="Enter the policy-safe content for approval." />
+        </label>
+        <div className="button-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+          <label>
+            <span>Requested schedule</span>
+            <input type="datetime-local" value={schedule} onChange={(event) => setSchedule(event.target.value)} />
+          </label>
+          <label>
+            <span>Internal note</span>
+            <input type="text" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Internal review note" />
+          </label>
+        </div>
+        <div style={{ marginTop: '1rem' }}>
+          <h3>Eligibility before submission</h3>
+          <ul>
+            <li>Consent state: {eligibility.consentGranted ? 'granted' : 'missing'}</li>
+            <li>Opt-out state: {eligibility.eligible ? 'clear' : 'blocked'}</li>
+            <li>Suppression state: {eligibility.eligible ? 'clear' : 'blocked'}</li>
+            <li>Cooldown status: {eligibility.eligible ? 'ok' : 'blocked'}</li>
+            <li>Connection state: {providerStatus.state}</li>
+            <li>Destination state: {eligibility.destinationState}</li>
+            <li>Capability: {eligibility.capabilitySupported ? 'supported' : 'unsupported'}</li>
+            <li>Content approval: {content.trim() ? 'approved' : 'missing'}</li>
+          </ul>
+          {eligibility.reasons.length > 0 && <p className="note">Blocked reason: {eligibility.reasons.join(' ')}</p>}
+        </div>
+        <div className="button-row" style={{ marginTop: '1rem' }}>
+          <button type="button" className="primary-button" disabled={submitting || !eligibility.eligible} onClick={() => void handleSubmit()}>{submitting ? 'Submitting…' : 'Submit for approval'}</button>
+        </div>
+        {result && <p className="note">{result.ok ? 'Result: submitted' : 'Result: blocked'} — {result.reason}</p>}
+      </div>
+    </div>
+  )
+}
+
+function SocialApprovalPage() {
+  const [jobId] = useState('job-approval-1')
+  const [message, setMessage] = useState('Awaiting review.')
+  const [status, setStatus] = useState('pending')
+  const [note, setNote] = useState('Review content before publishing.')
+
+  const handleAction = async (action: 'approve' | 'return' | 'reject') => {
+    if (action === 'approve') {
+      const response = await approveSocialContent({ jobId, note })
+      setStatus(response.state)
+      setMessage(response.reason)
+      return
+    }
+
+    if (action === 'return') {
+      const response = await returnSocialContent({ jobId, note })
+      setStatus(response.state)
+      setMessage(response.reason)
+      return
+    }
+
+    const response = await rejectSocialContent({ jobId, note })
+    setStatus(response.state)
+    setMessage(response.reason)
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Review</p><h1>Content Approval</h1></div></div>
+      <div className="panel">
+        <h2>Approval summary</h2>
+        <ul>
+          <li>Prospect: Northside Studio</li>
+          <li>Requestor: Leah Morgan</li>
+          <li>Destination: Meta business page</li>
+          <li>Action: post</li>
+          <li>Content version: 2</li>
+          <li>Eligibility: eligible</li>
+          <li>Requested schedule: {new Date(Date.now() + 3600000).toLocaleString()}</li>
+          <li>Review state: {status}</li>
+        </ul>
+        <label style={{ display: 'grid', gap: '0.5rem', marginTop: '1rem' }}>
+          <span>Review note</span>
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} />
+        </label>
+        <div className="button-row" style={{ marginTop: '1rem' }}>
+          <button type="button" className="primary-button" onClick={() => void handleAction('approve')}>Approve</button>
+          <button type="button" className="secondary-button" onClick={() => void handleAction('return')}>Return for revision</button>
+          <button type="button" className="ghost-button" onClick={() => void handleAction('reject')}>Reject</button>
+        </div>
+        <p className="note">{message}</p>
       </div>
     </div>
   )

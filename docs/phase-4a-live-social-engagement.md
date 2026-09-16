@@ -214,9 +214,83 @@ Phase 4E: normative governance, administration, and launch
 
 The webhook boundary validates the Meta `x-hub-signature-256` HMAC when configured, rejects invalid signatures, extracts a provider event ID, stores a deduplication boundary, and ignores unsupported or incomplete payloads without inferring D9 affiliation or membership. A challenge request is accepted only when the verification token matches the secure server-side configuration.
 
-## Final Phase 4A.2 repository state
+## Phase 4A.3 application and operator workflow
 
-Phase 4A.2 completes the repository-side database enforcement layer for authorized social publishing. The schema intentionally remains neutral and safe until the live deployment environment provides the actual Meta credentials and verified provider connection.
+Phase 4A.3 completes the repository-side application flow for authorized social engagement handling without claiming live Meta connectivity.
+
+### Route and page inventory
+
+The application exposes the secure social work flow through protected routes that remain gated by the repository authentication and role model:
+
+- Social Connections — provider state, safe destination summary, configuration-required handling
+- Publishing Queue — queue readiness, blocked reason display, safe publish-state summary
+- Scheduled Posts — schedule visibility only when a verified connection exists
+- Published/Failed Activity — activity feed with blocked or failed states only, never a false published state
+- Inbound Activity — normalized webhook event display and safe event summary
+- Connection Health — provider state and destination health summary without raw secrets or tokens
+- Content Preparation — operator workflow for prospect or business selection, content draft, destination, action, scheduling, notes, and eligibility review
+- Content Approval — review screen showing prospect, requestor, destination, content version, warnings, requested schedule, and review note actions
+
+### Operator workflow
+
+The operator workflow is intentionally fail-closed:
+
+1. select a prospect or business
+2. prepare a supported social engagement item
+3. choose an authorized destination
+4. select a supported action
+5. enter proposed content
+6. choose requested schedule
+7. add internal note
+8. evaluate eligibility
+9. submit for approval
+10. review and approve, return, or reject the item
+11. schedule or reschedule approved content
+12. cancel eligible work
+13. request an authorized retry when the safe connection permits it
+14. view status and history in the secure work queues
+
+### Eligibility presentation and fail-closed policy
+
+Before submission or scheduling, each action must show the safe operator-visible eligibility summary:
+
+- consent state
+- opt-out state
+- suppression state
+- frequency/cooldown status
+- connection state
+- destination status
+- capability support
+- review warnings and content-version changes
+- final blocked reason if the action cannot proceed
+
+The application blocks actions when consent is missing, the prospect is opted out or suppressed, the cooldown rule is active, the destination is disconnected or disabled, the capability is unsupported, the provider is not connected, or the content is not approved or has changed since approval.
+
+### Approval experience and server boundary
+
+Authorized reviewers can approve, return, or reject content only through the protected workflow. The UI waits for a confirmed server result before it updates state. Approved content changes visibly require reapproval before the system will permit a new schedule or send. The repository never accepts direct browser-supplied provider results or actor identifiers in the publish path.
+
+### Status and activity behavior
+
+Activity displays remain safe and normalized:
+
+- configuration_required, disconnected, and provider_error states are visible as blocked or failed states only
+- a work item is never shown as published without verified server confirmation
+- raw Meta payloads, provider secrets, stack traces, token values, and service-role material are not rendered in browser UI
+
+### Responsive and accessible behavior
+
+The social engagement screens follow the repository’s existing responsive conventions and accessible patterns:
+
+- forms use visible labels and keyboard access
+- controls remain usable at mobile, tablet, and desktop widths
+- wide tables scroll within their container rather than causing page-level overflow
+- focus and status messaging remain available to assistive technology
+- meaningful text explains loading, empty, blocked, and configuration-required states
+
+## Final Phase 4A.3 repository state
+
+Phase 4A.3 remains repository-scoped and intentionally honest: the product does not claim live Meta connectivity or a production provider connection until the secure environment and provider credentials are configured in Phase 4A.4. The code remains fail-closed and safe for non-live repository validation.
 
 ### Final schema objects
 

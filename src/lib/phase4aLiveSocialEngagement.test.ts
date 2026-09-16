@@ -1,9 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { parseSync } from 'pgsql-parser'
-import { describe, expect, it } from 'vitest'
+import { loadModule, parseSync } from 'pgsql-parser'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 describe('phase 4A live social engagement enforcement', () => {
+  beforeAll(async () => {
+    await loadModule()
+  })
+
   it('requires the migration and verifier to contain the repository-side social publishing guardrails', () => {
     const migrationSql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260917_000001_phase_4a_live_social_engagement.sql'), 'utf8')
     const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_phase_4a_live_social_engagement.sql'), 'utf8')
