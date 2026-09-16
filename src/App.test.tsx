@@ -58,6 +58,67 @@ describe('workflow engine', () => {
   })
 })
 
+describe('auth initialization gating', () => {
+  beforeEach(async () => {
+    const { supabase } = await import('./lib/supabaseClient')
+    const mockSupabase = supabase as any
+
+    mockSupabase.auth.getSession.mockReset()
+    mockSupabase.auth.onAuthStateChange.mockReset()
+    mockSupabase.auth.signInWithPassword.mockReset()
+    mockSupabase.auth.signOut.mockReset()
+    mockSupabase.from.mockReset()
+
+    mockSupabase.auth.onAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: vi.fn() } },
+    })
+  })
+
+  it('keeps the login route on neutral loading while the session is still resolving', async () => {
+    const mockSupabase = await getMockSupabase()
+    mockSupabase.auth.getSession.mockReturnValue(new Promise(() => {}))
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: /loading d9network/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the root route on neutral loading until auth resolution completes', async () => {
+    const mockSupabase = await getMockSupabase()
+    mockSupabase.auth.getSession.mockReturnValue(new Promise(() => {}))
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: /loading d9network/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument()
+  })
+
+  it('prevents protected routes from exposing their content before the session resolves', async () => {
+    const mockSupabase = await getMockSupabase()
+    mockSupabase.auth.getSession.mockReturnValue(new Promise(() => {}))
+
+    render(
+      <MemoryRouter initialEntries={['/organization-exports']}>
+        <AppRoot />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: /loading d9network/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /organization exports/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/verification export request/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('quick capture', () => {
   beforeEach(async () => {
     const { supabase } = await import('./lib/supabaseClient')

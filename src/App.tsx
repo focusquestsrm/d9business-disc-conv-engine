@@ -314,11 +314,22 @@ function AppRoot() {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
+      <Route
+        path="/"
+        element={
+          authLoading ? (
+            <LoadingPage />
+          ) : (
+            <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />
+          )
+        }
+      />
       <Route
         path="/login"
         element={
-          isAuthenticated ? (
+          authLoading ? (
+            <LoadingPage />
+          ) : isAuthenticated ? (
             <Navigate to={loginRedirectTarget} replace />
           ) : (
             <LoginPage
