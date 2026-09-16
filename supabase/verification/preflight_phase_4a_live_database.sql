@@ -174,6 +174,57 @@ WITH checks AS (
          ) THEN 'Raw provider payload is preserved as a normalized event record in a controlled table.' ELSE 'Raw payload column is absent; the database is not storing provider secrets in a raw form.' END
 )
 SELECT 'Phase 4A live database preflight' AS verification_name,
+       CASE
+         WHEN NOT (
+           to_regclass('public.registration_invitations') IS NOT NULL
+           AND to_regclass('public.registration_handoffs') IS NOT NULL
+           AND to_regclass('public.member_profile_links') IS NOT NULL
+           AND to_regclass('public.registration_journey_events') IS NOT NULL
+           AND to_regclass('public.registration_match_candidates') IS NOT NULL
+           AND to_regclass('public.brilliant_directories_sync_events') IS NOT NULL
+         ) THEN 'BLOCKED_MISSING_3E'
+         WHEN NOT (
+           to_regclass('public.export_requests') IS NOT NULL
+           AND to_regclass('public.export_audit_events') IS NOT NULL
+         ) THEN 'BLOCKED_MISSING_3F'
+         WHEN (
+           to_regclass('public.social_provider_connections') IS NOT NULL
+           OR to_regclass('public.social_provider_destinations') IS NOT NULL
+           OR to_regclass('public.social_provider_capabilities') IS NOT NULL
+           OR to_regclass('public.social_publishing_jobs') IS NOT NULL
+           OR to_regclass('public.social_publishing_attempts') IS NOT NULL
+           OR to_regclass('public.social_provider_events') IS NOT NULL
+           OR to_regclass('public.social_provider_health_events') IS NOT NULL
+         ) AND NOT (
+           to_regclass('public.social_provider_connections') IS NOT NULL
+           AND to_regclass('public.social_provider_destinations') IS NOT NULL
+           AND to_regclass('public.social_provider_capabilities') IS NOT NULL
+           AND to_regclass('public.social_publishing_jobs') IS NOT NULL
+           AND to_regclass('public.social_publishing_attempts') IS NOT NULL
+           AND to_regclass('public.social_provider_events') IS NOT NULL
+           AND to_regclass('public.social_provider_health_events') IS NOT NULL
+         ) THEN 'BLOCKED_PARTIAL_4A'
+         WHEN (
+           to_regclass('public.social_provider_connections') IS NOT NULL
+           AND to_regclass('public.social_provider_destinations') IS NOT NULL
+           AND to_regclass('public.social_provider_capabilities') IS NOT NULL
+           AND to_regclass('public.social_publishing_jobs') IS NOT NULL
+           AND to_regclass('public.social_publishing_attempts') IS NOT NULL
+           AND to_regclass('public.social_provider_events') IS NOT NULL
+           AND to_regclass('public.social_provider_health_events') IS NOT NULL
+         ) THEN '4A_ALREADY_APPLIED_RUN_VERIFIER'
+         WHEN (
+           to_regclass('public.registration_invitations') IS NOT NULL
+           AND to_regclass('public.registration_handoffs') IS NOT NULL
+           AND to_regclass('public.member_profile_links') IS NOT NULL
+           AND to_regclass('public.registration_journey_events') IS NOT NULL
+           AND to_regclass('public.registration_match_candidates') IS NOT NULL
+           AND to_regclass('public.brilliant_directories_sync_events') IS NOT NULL
+           AND to_regclass('public.export_requests') IS NOT NULL
+           AND to_regclass('public.export_audit_events') IS NOT NULL
+         ) THEN 'READY_TO_APPLY_4A'
+         ELSE 'BLOCKED_OTHER_DEPENDENCY'
+       END AS preflight_status,
        CASE WHEN COUNT(*) FILTER (WHERE status = 'FAIL') = 0 THEN 'PASS' ELSE 'BLOCK' END AS overall_status,
        COUNT(*) FILTER (WHERE status = 'PASS') AS pass_count,
        COUNT(*) FILTER (WHERE status = 'FAIL') AS fail_count,
