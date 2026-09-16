@@ -84,7 +84,7 @@ describe('auth initialization gating', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { name: /loading d9network/i })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: /checking secure access/i })).toBeInTheDocument()
     expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument()
   })
@@ -99,7 +99,7 @@ describe('auth initialization gating', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { name: /loading d9network/i })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: /checking secure access/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument()
   })
 
@@ -113,7 +113,7 @@ describe('auth initialization gating', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { name: /loading d9network/i })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: /checking secure access/i })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /organization exports/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/verification export request/i)).not.toBeInTheDocument()
   })

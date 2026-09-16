@@ -706,10 +706,9 @@ function ProtectedRoute({
 function LoadingPage() {
   return (
     <div className="page auth-page">
-      <div className="panel auth-card loading-card">
-        <div className="brand-mark large" aria-label="D9Network">D9</div>
-        <h1>Loading D9Network</h1>
-        <p className="auth-copy">Restoring your secure session and platform access.</p>
+      <div className="panel auth-card loading-card" role="status" aria-live="polite" aria-label="Checking secure access">
+        <div className="loading-spinner" aria-hidden="true" />
+        <span className="sr-only">Checking secure access</span>
       </div>
     </div>
   )
