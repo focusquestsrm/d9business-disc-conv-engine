@@ -21,6 +21,31 @@ WITH checks AS (
          CASE WHEN to_regclass('public.social_provider_events') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
          CASE WHEN to_regclass('public.social_provider_events') IS NOT NULL THEN 'Webhook events table exists.' ELSE 'Webhook events table is missing.' END
   UNION ALL
+  SELECT 'FUNCTION', 'public.enforce_social_connection_state()', 'function_exists',
+         CASE WHEN to_regprocedure('public.enforce_social_connection_state()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.enforce_social_connection_state()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.enforce_social_connection_state()') IS NOT NULL THEN 'Social connection state guard exists.' ELSE 'Social connection state guard is missing.' END
+  UNION ALL
+  SELECT 'FUNCTION', 'public.enforce_social_publishing_job_transition()', 'function_exists',
+         CASE WHEN to_regprocedure('public.enforce_social_publishing_job_transition()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.enforce_social_publishing_job_transition()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.enforce_social_publishing_job_transition()') IS NOT NULL THEN 'Publishing job transition guard exists.' ELSE 'Publishing job transition guard is missing.' END
+  UNION ALL
+  SELECT 'FUNCTION', 'public.record_social_publishing_attempt()', 'function_exists',
+         CASE WHEN to_regprocedure('public.record_social_publishing_attempt()') IS NOT NULL THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN to_regprocedure('public.record_social_publishing_attempt()') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN to_regprocedure('public.record_social_publishing_attempt()') IS NOT NULL THEN 'Publishing attempt recording guard exists.' ELSE 'Publishing attempt guard is missing.' END
+  UNION ALL
+  SELECT 'TRIGGER', 'social_provider_connections_state_guard', 'trigger_exists',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'social_provider_connections_state_guard') THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'social_provider_connections_state_guard') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'social_provider_connections_state_guard') THEN 'Connection state trigger exists.' ELSE 'Connection state trigger is missing.' END
+  UNION ALL
+  SELECT 'TRIGGER', 'social_publishing_jobs_state_guard', 'trigger_exists',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'social_publishing_jobs_state_guard') THEN 'EXISTS' ELSE 'MISSING' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'social_publishing_jobs_state_guard') THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'social_publishing_jobs_state_guard') THEN 'Publishing job trigger exists.' ELSE 'Publishing job trigger is missing.' END
+  UNION ALL
   SELECT 'RLS', 'public.social_provider_connections', 'rls_enabled',
          CASE WHEN (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.social_provider_connections'::regclass) THEN 'TRUE' ELSE 'FALSE' END,
          CASE WHEN (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.social_provider_connections'::regclass) THEN 'PASS' ELSE 'FAIL' END,

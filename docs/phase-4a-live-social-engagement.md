@@ -214,14 +214,102 @@ Phase 4E: normative governance, administration, and launch
 
 The webhook boundary validates the Meta `x-hub-signature-256` HMAC when configured, rejects invalid signatures, extracts a provider event ID, stores a deduplication boundary, and ignores unsupported or incomplete payloads without inferring D9 affiliation or membership. A challenge request is accepted only when the verification token matches the secure server-side configuration.
 
-## Remaining Phase 4A.2–4A.4 work
+## Final Phase 4A.2 repository state
 
-Phase 4A.1 is the secure server-side foundation only. The remaining dependency work includes:
+Phase 4A.2 completes the repository-side database enforcement layer for authorized social publishing. The schema intentionally remains neutral and safe until the live deployment environment provides the actual Meta credentials and verified provider connection.
 
-- database enforcement for provider connection records and publishing job transitions
-- server-side policy and role enforcement tied to the authenticated session
-- full content approval and reapproval enforcement with content hash/version tracking
-- live provider integration and verification in the authorized deployment environment
+### Final schema objects
+
+The additive Phase 4A migration defines:
+
+- `public.social_provider_connections` — provider lineage, connection state, page/account identifiers, trusted server metadata
+- `public.social_provider_destinations` — Meta destinations, enabled/disabled channels, approval state
+- `public.social_provider_capabilities` — supported content capability matrix and max lengths
+- `public.social_publishing_jobs` — job lifecycle, approval metadata, content hash/version, scheduling, provider identifiers
+- `public.social_publishing_attempts` — append-only attempt history and server-side result recording
+- `public.social_provider_events` — normalized inbound webhook evidence and deduplication boundary
+- `public.social_provider_health_events` — provider state transitions and operational audit trail
+
+### Publishing state machine
+
+The repository enforces a conservative publishing state model:
+
+- `draft` — created but not yet submitted
+- `submitted_for_review` — human review requested
+- `approved` — content approved for the current hash/version
+- `scheduled` — queued for a future send time
+- `ready` — task is eligible and reserved for trusted processing
+- `publishing` — a trusted server worker has claimed the job
+- `published` — provider success was verified by the trusted server path
+- `partially_published` — provider confirmed partial success
+- `failed` — provider-normalized failure or a safe, explicit failure state
+- `cancelled` — manually cancelled before final delivery
+
+A job cannot enter a publish-ready state unless it carries an approved approval record, a content hash, a positive content version, a valid destination, and a connected provider connection.
+
+### Protected database operations
+
+The repository includes protected server-side SQL functions covering the trusted operations required by Phase 4A.2:
+
+- `public.enforce_social_connection_state()` — blocks forged or invalid provider connection states
+- `public.enforce_social_publishing_job_transition()` — prevents invalid job-state transitions and unapproved publish states
+- `public.record_social_publishing_attempt()` — enforces sequential attempts and updates the job result in the trusted server path
+- `public.current_user_can_manage_social_connections()` — centralizes permission gating for admin staff
+
+The final repository model also keeps the trusted publishing path separate from browser-driven input and restricts provider-result mutation to server-side policy by design.
+
+### Actor, tenant, role, and consent controls
+
+Phase 4A.2 keeps the repository aligned with the established D9 role model:
+
+- trusted actors are derived from `auth.uid()`
+- anonymous callers are rejected for protected operations
+- client-supplied actor IDs are not accepted
+- tenant and organization boundaries are enforced before approving or claiming a job
+- role and permission checks are applied through the repository’s existing `current_user_is_platform_admin()` and `user_has_permission()` model
+- consent, opt-out, suppression, frequency, and cooldown conditions must all succeed before a job is eligible
+- if the authoritative consent or suppression record is unavailable, the system fails closed and records the reason rather than assuming eligibility
+
+### Idempotency and concurrency protections
+
+Phase 4A.2 includes database-level protections for the trust boundaries underlying scheduled publishing:
+
+- duplicate job requests should use the same idempotency key and must not create duplicate live publish actions
+- a worker can claim only one eligible job at a time via trusted server locking logic and sequential workflow checks
+- repeated provider success callbacks are rejected or normalized to duplicate/ignored states instead of creating repeated publish transitions
+- webhook events are deduplicated via a provider-event uniqueness boundary before they can affect state
+- retry attempts receive sequential attempt numbers
+- failed attempts never create a false published state
+
+### Webhook verification and deduplication
+
+The repository’s webhook boundary remains intentionally conservative:
+
+- the secure Meta webhook signature is validated before any processing occurs
+- challenge verification requires the server-side verification token
+- unsupported or incomplete payloads are safely ignored
+- event IDs are deduplicated before state changes are applied
+- raw secrets are never stored in tables or returned to client code
+
+### Trusted server publishing sequence
+
+The final trusted publishing flow is:
+
+1. authenticated request or scheduled invocation enters the secure server boundary
+2. eligible job is claimed by the trusted server path only
+3. approved stored content, destination, and capability checks are validated
+4. consent, suppression, cooldown, and frequency gates are re-evaluated
+5. a provider operation is executed only if the capability is supported and the connection is connected
+6. the server records the attempt, then records verified success or normalized failure
+7. the browser never sees provider secrets, raw payloads, or live success claims without server verification
+
+### Remaining Phase 4A.3 and 4A.4 work
+
+Phase 4A.3 remains the application/operator integration layer: live UI workflows, operational review screens, and admin-facing approval orchestration.
+
+Phase 4A.4 remains the live Meta configuration and deployment environment work: setting the real provider credentials, verifying the production-secure secret boundary, and validating the live Meta connection in the authorized deployment environment.
+
+This repository remains intentionally honest: it does not claim live Meta connectivity until that later environment and provider configuration are completed.
 
 ## Migration and verifier instructions
 
