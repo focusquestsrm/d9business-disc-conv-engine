@@ -195,11 +195,44 @@ WITH checks AS (
           AND EXISTS (
             SELECT 1
             FROM unnest(p.roles) AS policy_role
-            WHERE lower(policy_role) IN ('anon', 'public')
+            WHERE lower(policy_role) = 'anon'
           )
-          AND NOT (
-            regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%auth.uid() is not null%'
-            AND regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%current_user_can_manage_social_connections()%'
+      ) THEN 'ANON_PRESENT'::text
+      WHEN EXISTS (
+        SELECT 1
+        FROM pg_policies p
+        WHERE p.schemaname = 'public'
+          AND p.tablename = 'social_provider_connections'
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(p.roles) AS policy_role
+            WHERE lower(policy_role) = 'public'
+          )
+          AND (
+            CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END = ''
+            OR CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END NOT ILIKE '%auth.uid() is not null%'
+            OR CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END NOT ILIKE '%current_user_can_manage_social_connections()%'
           )
       ) THEN 'ANON_PRESENT'::text
       ELSE 'NO_ANON'::text
@@ -213,11 +246,44 @@ WITH checks AS (
           AND EXISTS (
             SELECT 1
             FROM unnest(p.roles) AS policy_role
-            WHERE lower(policy_role) IN ('anon', 'public')
+            WHERE lower(policy_role) = 'anon'
           )
-          AND NOT (
-            regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%auth.uid() is not null%'
-            AND regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%current_user_can_manage_social_connections()%'
+      ) THEN 'FAIL'::text
+      WHEN EXISTS (
+        SELECT 1
+        FROM pg_policies p
+        WHERE p.schemaname = 'public'
+          AND p.tablename = 'social_provider_connections'
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(p.roles) AS policy_role
+            WHERE lower(policy_role) = 'public'
+          )
+          AND (
+            CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END = ''
+            OR CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END NOT ILIKE '%auth.uid() is not null%'
+            OR CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END NOT ILIKE '%current_user_can_manage_social_connections()%'
           )
       ) THEN 'FAIL'::text
       ELSE 'PASS'::text
@@ -231,11 +297,44 @@ WITH checks AS (
           AND EXISTS (
             SELECT 1
             FROM unnest(p.roles) AS policy_role
-            WHERE lower(policy_role) IN ('anon', 'public')
+            WHERE lower(policy_role) = 'anon'
           )
-          AND NOT (
-            regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%auth.uid() is not null%'
-            AND regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%current_user_can_manage_social_connections()%'
+      ) THEN 'A public/anon policy on provider connections explicitly permits anonymous access.'::text
+      WHEN EXISTS (
+        SELECT 1
+        FROM pg_policies p
+        WHERE p.schemaname = 'public'
+          AND p.tablename = 'social_provider_connections'
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(p.roles) AS policy_role
+            WHERE lower(policy_role) = 'public'
+          )
+          AND (
+            CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END = ''
+            OR CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END NOT ILIKE '%auth.uid() is not null%'
+            OR CASE p.cmd
+              WHEN 'SELECT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'INSERT' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'UPDATE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              WHEN 'DELETE' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, '')), '\s+', ' ', 'g'))
+              WHEN 'ALL' THEN lower(regexp_replace(concat_ws(' ', coalesce(p.qual, ''), coalesce(p.with_check, '')), '\s+', ' ', 'g'))
+              ELSE ''
+            END NOT ILIKE '%current_user_can_manage_social_connections()%'
           )
       ) THEN 'A public/anon policy on provider connections is missing auth.uid() and/or current_user_can_manage_social_connections() gates.'::text
       ELSE 'Public/anon roles on provider connections are guarded by auth.uid() IS NOT NULL and current_user_can_manage_social_connections().'::text
