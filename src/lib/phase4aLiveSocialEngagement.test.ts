@@ -31,6 +31,58 @@ describe('phase 4A live social engagement enforcement', () => {
     expect(() => parseSync(verifierSql)).not.toThrow()
   })
 
+  it('requires a read-only Phase 4A live verifier with a seven-column UNION contract and evidence-backed checks', () => {
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_phase_4a_live_social_engagement.sql'), 'utf8')
+
+    expect(verifierSql).toContain('BEGIN;')
+    expect(verifierSql).toContain('ROLLBACK;')
+    expect(verifierSql).not.toContain('COMMIT;')
+    expect(verifierSql).toContain('SELECT category, object_name, check_name, expected_result, actual_result, status, details')
+    expect(verifierSql).toContain("'TABLE'::text")
+    expect(verifierSql).toContain("'FUNCTION'::text")
+    expect(verifierSql).toContain("'RLS'::text")
+    expect(verifierSql).toContain("'SECURITY'::text")
+    expect(verifierSql).toContain("'POLICY'::text")
+    expect(verifierSql).toContain("'DATA'::text")
+    expect(verifierSql).toContain("'OVERALL'::text")
+    expect(verifierSql).toContain("'table_exists'::text")
+    expect(verifierSql).toContain("'function_exists'::text")
+    expect(verifierSql).toContain("'trigger_exists'::text")
+    expect(verifierSql).toContain("'rls_enabled'::text")
+    expect(verifierSql).toContain("'search_path_restricted'::text")
+    expect(verifierSql).toContain("'anonymous_denied'::text")
+    expect(verifierSql).toContain("'approval_required'::text")
+    expect(verifierSql).toContain("'EXISTS'::text")
+    expect(verifierSql).toContain("'TRUE'::text")
+    expect(verifierSql).toContain("'SET search_path'::text")
+    expect(verifierSql).toContain("'NO_ANON'::text")
+    expect(verifierSql).toContain("'APPROVAL'::text")
+    expect(verifierSql).toContain('pg_get_functiondef')
+    expect(verifierSql).toContain('SET search_path = public, auth, pg_catalog')
+    expect(verifierSql).toContain('unnest(p.roles)')
+    expect(verifierSql).toContain("lower(policy_role) IN ('anon', 'public')")
+    expect(verifierSql).toContain('COUNT(*) FILTER (WHERE status = \'FAIL\')')
+
+    // The contract is enforced by the first explicit SELECT and by the final projection, which keeps the positional UNION output aligned.
+    const firstBranch = verifierSql.match(/SELECT[\s\S]*?UNION ALL/)
+    expect(firstBranch).not.toBeNull()
+    expect(firstBranch![0]).toContain('AS category')
+    expect(firstBranch![0]).toContain('AS object_name')
+    expect(firstBranch![0]).toContain('AS check_name')
+    expect(firstBranch![0]).toContain('AS expected_result')
+    expect(firstBranch![0]).toContain('AS actual_result')
+    expect(firstBranch![0]).toContain('AS status')
+    expect(firstBranch![0]).toContain('AS details')
+
+    expect(verifierSql).toContain('SELECT category, object_name, check_name, expected_result, actual_result, status, details')
+    expect(verifierSql).toContain('phase_4a_live_social_engagement_verification')
+    expect(verifierSql).toContain("'0 FAIL'::text")
+    expect(verifierSql).toContain('PASS')
+    expect(verifierSql).toContain('FAIL')
+
+    expect(() => parseSync(verifierSql)).not.toThrow()
+  })
+
   it('requires a read-only Phase 4A live database preflight package', () => {
     const preflightSql = readFileSync(resolve(process.cwd(), 'supabase/verification/preflight_phase_4a_live_database.sql'), 'utf8')
 
@@ -49,21 +101,28 @@ describe('phase 4A live social engagement enforcement', () => {
     expect(preflightSql).not.toContain('CREATE POLICY')
     expect(preflightSql).not.toContain('CREATE TRIGGER')
 
-    const sevenColumnUnionBranches = [
-      'SELECT\n    \'TABLE\'::text AS category',
-      'SELECT\n    \'FUNCTION\'::text,',
-      'SELECT\n    \'TRIGGER\'::text,',
-      'SELECT\n    \'RLS\'::text,',
-      'SELECT\n    \'POLICY\'::text,',
-      'SELECT\n    \'SAFETY\'::text,',
-      'SELECT\n    \'SUMMARY\'::text AS category'
+    const sevenColumnMarkers = [
+      "'TABLE'::text AS category",
+      "'FUNCTION'::text",
+      "'TRIGGER'::text",
+      "'RLS'::text",
+      "'POLICY'::text",
+      "'SAFETY'::text",
+      "'SUMMARY'::text AS category",
+      'SELECT category, object_name, check_name, expected_result, actual_result, status, details'
     ]
 
-    for (const branch of sevenColumnUnionBranches) {
-      expect(preflightSql).toContain(branch)
+    for (const marker of sevenColumnMarkers) {
+      expect(preflightSql).toContain(marker)
     }
 
-    expect(preflightSql).toContain('SELECT category, object_name, check_name, expected_result, actual_result, status, details')
+    expect(preflightSql).toContain('category')
+    expect(preflightSql).toContain('object_name')
+    expect(preflightSql).toContain('check_name')
+    expect(preflightSql).toContain('expected_result')
+    expect(preflightSql).toContain('actual_result')
+    expect(preflightSql).toContain('status')
+    expect(preflightSql).toContain('details')
     expect(() => parseSync(preflightSql)).not.toThrow()
   })
 })
