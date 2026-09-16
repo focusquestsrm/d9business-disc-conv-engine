@@ -387,6 +387,15 @@ This repository remains intentionally honest: it does not claim live Meta connec
 
 ## Migration and verifier instructions
 
+Before any apply step, run the read-only preflight package to confirm the target database is ready for the 3E/3F/4A live schema set:
+
+- `supabase/verification/preflight_phase_4a_live_database.sql`
+
+Interpret the preflight results:
+
+- if the overall status is `PASS`, continue to the additive migration
+- if the overall status is `BLOCK`, stop and resolve the missing or unsafe dependency before proceeding
+
 Run the additive migration in the target Supabase project:
 
 - `supabase/migrations/20260917_000001_phase_4a_live_social_engagement.sql`
@@ -395,4 +404,4 @@ Run the verification script:
 
 - `supabase/verification/verify_phase_4a_live_social_engagement.sql`
 
-This repository does not run live Supabase SQL automatically; Danielle will execute the migration and verifier manually in the configured environment.
+This repository does not run live Supabase SQL automatically; Danielle will execute the preflight, migration, and verifier manually in the configured environment.

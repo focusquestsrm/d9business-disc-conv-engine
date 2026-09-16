@@ -30,4 +30,20 @@ describe('phase 4A live social engagement enforcement', () => {
     expect(() => parseSync(migrationSql)).not.toThrow()
     expect(() => parseSync(verifierSql)).not.toThrow()
   })
+
+  it('requires a read-only Phase 4A live database preflight package', () => {
+    const preflightSql = readFileSync(resolve(process.cwd(), 'supabase/verification/preflight_phase_4a_live_database.sql'), 'utf8')
+
+    expect(preflightSql).toContain('Phase 4A live database preflight')
+    expect(preflightSql).toContain('public.social_provider_connections')
+    expect(preflightSql).toContain('public.export_requests')
+    expect(preflightSql).toContain('overall_status')
+    expect(preflightSql).toContain('SELECT')
+    expect(preflightSql).not.toContain('CREATE TABLE')
+    expect(preflightSql).not.toContain('ALTER TABLE')
+    expect(preflightSql).not.toContain('CREATE POLICY')
+    expect(preflightSql).not.toContain('CREATE TRIGGER')
+
+    expect(() => parseSync(preflightSql)).not.toThrow()
+  })
 })
