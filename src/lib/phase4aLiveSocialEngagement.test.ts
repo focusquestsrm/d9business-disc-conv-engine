@@ -37,7 +37,6 @@ describe('phase 4A live social engagement enforcement', () => {
     expect(preflightSql).toContain('Phase 4A live database preflight')
     expect(preflightSql).toContain('public.social_provider_connections')
     expect(preflightSql).toContain('public.export_requests')
-    expect(preflightSql).toContain('overall_status')
     expect(preflightSql).toContain('READY_TO_APPLY_4A')
     expect(preflightSql).toContain('4A_ALREADY_APPLIED_RUN_VERIFIER')
     expect(preflightSql).toContain('BLOCKED_MISSING_3E')
@@ -50,6 +49,21 @@ describe('phase 4A live social engagement enforcement', () => {
     expect(preflightSql).not.toContain('CREATE POLICY')
     expect(preflightSql).not.toContain('CREATE TRIGGER')
 
+    const sevenColumnUnionBranches = [
+      'SELECT\n    \'TABLE\'::text AS category',
+      'SELECT\n    \'FUNCTION\'::text,',
+      'SELECT\n    \'TRIGGER\'::text,',
+      'SELECT\n    \'RLS\'::text,',
+      'SELECT\n    \'POLICY\'::text,',
+      'SELECT\n    \'SAFETY\'::text,',
+      'SELECT\n    \'SUMMARY\'::text AS category'
+    ]
+
+    for (const branch of sevenColumnUnionBranches) {
+      expect(preflightSql).toContain(branch)
+    }
+
+    expect(preflightSql).toContain('SELECT category, object_name, check_name, expected_result, actual_result, status, details')
     expect(() => parseSync(preflightSql)).not.toThrow()
   })
 })
