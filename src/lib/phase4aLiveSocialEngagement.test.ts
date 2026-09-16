@@ -54,13 +54,14 @@ describe('phase 4A live social engagement enforcement', () => {
     expect(verifierSql).toContain("'approval_required'::text")
     expect(verifierSql).toContain("'EXISTS'::text")
     expect(verifierSql).toContain("'TRUE'::text")
-    expect(verifierSql).toContain("'SET search_path'::text")
+    expect(verifierSql).toContain("'search_path=public, auth, pg_catalog'::text")
     expect(verifierSql).toContain("'NO_ANON'::text")
     expect(verifierSql).toContain("'APPROVAL'::text")
-    expect(verifierSql).toContain('pg_get_functiondef')
-    expect(verifierSql).toContain('SET search_path = public, auth, pg_catalog')
+    expect(verifierSql).toContain('pg_proc.proconfig')
+    expect(verifierSql).toContain('search_path=public,auth,pg_catalog')
     expect(verifierSql).toContain('unnest(p.roles)')
     expect(verifierSql).toContain("lower(policy_role) IN ('anon', 'public')")
+    expect(verifierSql).toContain('pg_get_policydef')
     expect(verifierSql).toContain('COUNT(*) FILTER (WHERE status = \'FAIL\')')
 
     // The contract is enforced by the first explicit SELECT and by the final projection, which keeps the positional UNION output aligned.
@@ -80,6 +81,58 @@ describe('phase 4A live social engagement enforcement', () => {
     expect(verifierSql).toContain('PASS')
     expect(verifierSql).toContain('FAIL')
 
+    expect(() => parseSync(verifierSql)).not.toThrow()
+  })
+
+  it('recognizes the live proconfig and guarded public-role policy evidence without false positives', () => {
+    const normalize = (input: string) => input
+      .toLowerCase()
+      .replace(/['"]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    const hasSafeSearchPath = (configs: string[]) => configs.some((cfg) => {
+      const normalized = normalize(cfg)
+        .replace(/^set\s+/, '')
+        .replace(/\s+to\s+/g, '=')
+        .replace(/["']/g, '')
+        .replace(/\s+/g, '')
+
+      return normalized.includes('search_path=public,auth,pg_catalog')
+    })
+
+    const isGuardedPublicPolicy = (definition: string) => {
+      const normalized = normalize(definition)
+      return normalized.includes('auth.uid() is not null') && normalized.includes('current_user_can_manage_social_connections()')
+    }
+
+    const guardedPolicyDefinition = "USING ((auth.uid() IS NOT NULL AND current_user_can_manage_social_connections())) WITH CHECK ((auth.uid() IS NOT NULL AND current_user_can_manage_social_connections()))"
+    const unguardedPolicyDefinition = 'USING (true) WITH CHECK (true)'
+    const explicitAnonPolicyDefinition = 'USING ((auth.uid() IS NULL)) WITH CHECK ((auth.uid() IS NULL))'
+    const missingAuthUidPolicyDefinition = 'USING ((current_user_can_manage_social_connections())) WITH CHECK ((current_user_can_manage_social_connections()))'
+    const missingPermissionGateDefinition = 'USING ((auth.uid() IS NOT NULL)) WITH CHECK ((auth.uid() IS NOT NULL))'
+
+    expect(hasSafeSearchPath(['search_path=public, auth, pg_catalog'])).toBe(true)
+    expect(hasSafeSearchPath(["SET search_path TO 'public', 'auth', 'pg_catalog'"])).toBe(true)
+    expect(isGuardedPublicPolicy(guardedPolicyDefinition)).toBe(true)
+    expect(isGuardedPublicPolicy(unguardedPolicyDefinition)).toBe(false)
+    expect(isGuardedPublicPolicy(explicitAnonPolicyDefinition)).toBe(false)
+    expect(isGuardedPublicPolicy(missingAuthUidPolicyDefinition)).toBe(false)
+    expect(isGuardedPublicPolicy(missingPermissionGateDefinition)).toBe(false)
+
+    const verifierSql = readFileSync(resolve(process.cwd(), 'supabase/verification/verify_phase_4a_live_social_engagement.sql'), 'utf8')
+    expect(verifierSql).toContain('pg_proc.proconfig')
+    expect(verifierSql).toContain('search_path=public,auth,pg_catalog')
+    expect(verifierSql).toContain('auth.uid()')
+    expect(verifierSql).toContain('current_user_can_manage_social_connections()')
+    expect(verifierSql).toContain('pg_get_policydef')
+    expect(verifierSql).toContain('ANON_PRESENT')
+    expect(verifierSql).toContain('NO_ANON')
+    expect(verifierSql).toContain('BEGIN;')
+    expect(verifierSql).toContain('ROLLBACK;')
+    expect(verifierSql).toContain('SELECT category, object_name, check_name, expected_result, actual_result, status, details')
+    expect(verifierSql).toContain('phase_4a_live_social_engagement_verification')
+    expect(verifierSql).toContain('overall_status')
     expect(() => parseSync(verifierSql)).not.toThrow()
   })
 

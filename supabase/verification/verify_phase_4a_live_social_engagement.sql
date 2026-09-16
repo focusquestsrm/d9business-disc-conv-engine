@@ -104,21 +104,81 @@ WITH checks AS (
     'SECURITY'::text,
     'public.current_user_can_manage_social_connections()'::text,
     'search_path_restricted'::text,
-    'SET search_path'::text,
+    'search_path=public, auth, pg_catalog'::text,
     CASE
       WHEN to_regprocedure('public.current_user_can_manage_social_connections()') IS NULL THEN 'MISSING'::text
-      WHEN pg_get_functiondef(to_regprocedure('public.current_user_can_manage_social_connections()')) ILIKE '%SET search_path = public, auth, pg_catalog%' THEN 'SET search_path'::text
+      WHEN EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        WHERE p.oid = to_regprocedure('public.current_user_can_manage_social_connections()')
+          AND p.proconfig IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(p.proconfig) AS cfg
+            WHERE regexp_replace(
+                    regexp_replace(
+                      replace(replace(lower(cfg), '''', ''), '"', ''),
+                      '^\s*set\s+search_path\s+to\s+',
+                      'search_path=',
+                      1
+                    ),
+                    '\s+',
+                    '',
+                    'g'
+                  ) LIKE '%search_path=public,auth,pg_catalog%'
+          )
+      ) THEN 'search_path=public, auth, pg_catalog'::text
       ELSE 'UNCONSTRAINED'::text
     END AS actual_result,
     CASE
       WHEN to_regprocedure('public.current_user_can_manage_social_connections()') IS NULL THEN 'FAIL'::text
-      WHEN pg_get_functiondef(to_regprocedure('public.current_user_can_manage_social_connections()')) ILIKE '%SET search_path = public, auth, pg_catalog%' THEN 'PASS'::text
+      WHEN EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        WHERE p.oid = to_regprocedure('public.current_user_can_manage_social_connections()')
+          AND p.proconfig IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(p.proconfig) AS cfg
+            WHERE regexp_replace(
+                    regexp_replace(
+                      replace(replace(lower(cfg), '''', ''), '"', ''),
+                      '^\s*set\s+search_path\s+to\s+',
+                      'search_path=',
+                      1
+                    ),
+                    '\s+',
+                    '',
+                    'g'
+                  ) LIKE '%search_path=public,auth,pg_catalog%'
+          )
+      ) THEN 'PASS'::text
       ELSE 'FAIL'::text
     END AS status,
     CASE
       WHEN to_regprocedure('public.current_user_can_manage_social_connections()') IS NULL THEN 'The social connection permission helper is missing.'::text
-      WHEN pg_get_functiondef(to_regprocedure('public.current_user_can_manage_social_connections()')) ILIKE '%SET search_path = public, auth, pg_catalog%' THEN 'Function definition constrains search_path to public, auth, pg_catalog.'::text
-      ELSE 'Function exists but does not show a safe, constrained search_path setting.'::text
+      WHEN EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        WHERE p.oid = to_regprocedure('public.current_user_can_manage_social_connections()')
+          AND p.proconfig IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(p.proconfig) AS cfg
+            WHERE regexp_replace(
+                    regexp_replace(
+                      replace(replace(lower(cfg), '''', ''), '"', ''),
+                      '^\s*set\s+search_path\s+to\s+',
+                      'search_path=',
+                      1
+                    ),
+                    '\s+',
+                    '',
+                    'g'
+                  ) LIKE '%search_path=public,auth,pg_catalog%'
+          )
+      ) THEN 'Function configuration constrains search_path to public, auth, pg_catalog via pg_proc.proconfig.'::text
+      ELSE 'Function exists but does not show a safe, constrained search_path setting in pg_proc.proconfig.'::text
     END AS details
   UNION ALL
   SELECT
@@ -137,6 +197,10 @@ WITH checks AS (
             FROM unnest(p.roles) AS policy_role
             WHERE lower(policy_role) IN ('anon', 'public')
           )
+          AND NOT (
+            regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%auth.uid() is not null%'
+            AND regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%current_user_can_manage_social_connections()%'
+          )
       ) THEN 'ANON_PRESENT'::text
       ELSE 'NO_ANON'::text
     END AS actual_result,
@@ -150,6 +214,10 @@ WITH checks AS (
             SELECT 1
             FROM unnest(p.roles) AS policy_role
             WHERE lower(policy_role) IN ('anon', 'public')
+          )
+          AND NOT (
+            regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%auth.uid() is not null%'
+            AND regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%current_user_can_manage_social_connections()%'
           )
       ) THEN 'FAIL'::text
       ELSE 'PASS'::text
@@ -165,8 +233,12 @@ WITH checks AS (
             FROM unnest(p.roles) AS policy_role
             WHERE lower(policy_role) IN ('anon', 'public')
           )
-      ) THEN 'Anonymous/public roles are granted privileges on provider connections by policy rows.'::text
-      ELSE 'No anonymous/public roles are granted provider connection privileges.'::text
+          AND NOT (
+            regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%auth.uid() is not null%'
+            AND regexp_replace(lower(pg_get_policydef(p.oid)), '\s+', ' ', 'g') ILIKE '%current_user_can_manage_social_connections()%'
+          )
+      ) THEN 'A public/anon policy on provider connections is missing auth.uid() and/or current_user_can_manage_social_connections() gates.'::text
+      ELSE 'Public/anon roles on provider connections are guarded by auth.uid() IS NOT NULL and current_user_can_manage_social_connections().'::text
     END AS details
   UNION ALL
   SELECT
