@@ -42,6 +42,7 @@ import { buildVerificationWorkbook, parseVerificationWorkbook } from './lib/veri
 import { buildWorkQueueSummary, filterWorkItems, normalizeWorkItem } from './lib/workqueue'
 import { createExportAuditState, exportAuditRepository } from './lib/exportAuditRepository'
 import { getSecurityStatusSummary } from './lib/securityLiveAcceptance'
+import { approvePublishingDecision, getSecureDestinationSummary, getSecureProviderStatus, normalizeProviderWebhook } from './lib/socialProviderService'
 
 type NavItem = {
   label: string
@@ -81,7 +82,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Social Engagement',
-    items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox' }, { label: 'AI Engagement Review', icon: Sparkles, to: '/ai-engagement-review' }, { label: 'Engagement Follow-ups', icon: CalendarCheck2, to: '/engagement-follow-ups' }, { label: 'Engagement Escalations', icon: AlertTriangle, to: '/engagement-escalations' }, { label: 'Engagement Connections', icon: Users, to: '/engagement-connections' }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
+    items: [{ label: 'Social Inbox', icon: MessageSquareText, to: '/social-inbox' }, { label: 'AI Engagement Review', icon: Sparkles, to: '/ai-engagement-review' }, { label: 'Engagement Follow-ups', icon: CalendarCheck2, to: '/engagement-follow-ups' }, { label: 'Engagement Escalations', icon: AlertTriangle, to: '/engagement-escalations' }, { label: 'Engagement Connections', icon: Users, to: '/engagement-connections' }, { label: 'Social Connections', icon: Users, to: '/social-connections' }, { label: 'Publishing Queue', icon: Megaphone, to: '/publishing-queue' }, { label: 'Scheduled Posts', icon: CalendarCheck2, to: '/scheduled-posts' }, { label: 'Published/Failed Activity', icon: FileText, to: '/published-failed-activity' }, { label: 'Inbound Activity', icon: MessageSquareText, to: '/inbound-activity' }, { label: 'Connection Health', icon: ShieldCheck, to: '/connection-health' }, { label: 'Content Queue', icon: Sparkles, to: '/content-queue', future: true }, { label: 'Publishing Calendar', icon: CalendarCheck2, to: '/publishing-calendar', future: true }],
   },
   {
     label: 'Registration',
@@ -551,6 +552,66 @@ function AppRoot() {
           <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
             <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
               <EngagementConnectionsPage isPlatformAdmin={isPlatformAdmin} />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/social-connections"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <SocialConnectionsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/publishing-queue"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <PublishingQueuePage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/scheduled-posts"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <ScheduledPostsPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/published-failed-activity"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <PublishedFailedActivityPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/inbound-activity"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <InboundActivityPage />
+            </AuthenticatedAppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/connection-health"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} authLoading={authLoading} isPlatformAdmin={isPlatformAdmin} requireAdmin={false}>
+            <AuthenticatedAppShell navGroups={normalizedRoutes} userDisplayName={userDisplayName} userRoleDisplay={userRoleDisplay} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} onSignOut={handleSignOut} signingOut={signingOut} expandedSections={expandedSections} setExpandedSections={setExpandedSections}>
+              <ConnectionHealthPage />
             </AuthenticatedAppShell>
           </ProtectedRoute>
         }
@@ -4765,6 +4826,145 @@ function EngagementConnectionsPage({ isPlatformAdmin }: { isPlatformAdmin: boole
         <h2>Supported social platforms</h2>
         <p>Instagram, Facebook, LinkedIn, and Email are represented as approved or restricted connection records. Administrative controls remain limited to authorized roles.</p>
         <p>{isPlatformAdmin ? 'Administrative validation and disconnect actions are available.' : 'Only health and visibility states are available for non-admin users.'}</p>
+      </div>
+    </div>
+  )
+}
+
+function SocialConnectionsPage() {
+  const status = getSecureProviderStatus()
+  const destinations = getSecureDestinationSummary()
+
+  if (status.state === 'configuration_required') {
+    return (
+      <div className="page">
+        <div className="page-header"><div><p className="eyebrow">Provider setup</p><h1>Social Connections</h1></div></div>
+        <div className="panel empty-state"><h2>Configuration required</h2><p>{status.reason}</p><p>Meta app credentials and webhook configuration are required before any provider page or account can be connected.</p></div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Provider setup</p><h1>Social Connections</h1></div></div>
+      <div className="panel">
+        <h2>Connected destinations</h2>
+        <div className="status-grid">
+          {destinations.length ? destinations.map((destination) => (
+            <div key={destination.id} className="status-card">
+              <p className="eyebrow">{destination.channel}</p>
+              <strong>{destination.name}</strong>
+              <span className={`pill ${destination.status === 'connected' ? 'success' : 'neutral'}`}>{destination.status}</span>
+            </div>
+          )) : <p>No configured destinations are currently available.</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PublishingQueuePage() {
+  const [records] = useState<Array<{ id: string; title: string; status: string; provider: string; approved: boolean }>>([
+    { id: 'job-1', title: 'Northside Studio weekly post', status: 'approved', provider: 'meta', approved: true },
+    { id: 'job-2', title: 'Campaign announcement', status: 'scheduled', provider: 'meta', approved: true },
+  ])
+
+  const decision = approvePublishingDecision({
+    contentApproved: true,
+    actorAuthorized: true,
+    destinationConnected: false,
+    consentGranted: true,
+    optOutActive: false,
+    frequencyOk: true,
+    providerAllowed: true,
+    hasAssetRights: true,
+    d9AffiliationApproved: true,
+    providerState: 'disconnected',
+    scheduledAt: new Date().toISOString(),
+  })
+
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Publishing</p><h1>Publishing Queue</h1></div></div>
+      <div className="panel">
+        <h2>Queue state</h2>
+        <p>{decision.state === 'ready' ? 'Queue is ready for provider dispatch.' : `Queue is blocked: ${decision.reason}`}</p>
+        <div className="table-panel">
+          {records.length ? (
+            <table className="data-table"><thead><tr><th>Title</th><th>Status</th><th>Provider</th><th>Approval</th></tr></thead><tbody>{records.map((record) => (
+              <tr key={record.id}><td>{record.title}</td><td>{record.status}</td><td>{record.provider}</td><td>{record.approved ? 'approved' : 'pending'}</td></tr>
+            ))}</tbody></table>
+          ) : <div className="empty-state"><h2>No queued posts</h2><p>No approved posts are waiting for provider publishing.</p></div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ScheduledPostsPage() {
+  const [items] = useState<Array<{ id: string; title: string; scheduled: string; status: string }>>([
+    { id: 'schedule-1', title: 'Northside Studio business highlight', scheduled: new Date(Date.now() + 86400000).toISOString(), status: 'scheduled' },
+  ])
+
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Publishing</p><h1>Scheduled Posts</h1></div></div>
+      <div className="panel">
+        {items.length ? <ul>{items.map((item) => <li key={item.id}><strong>{item.title}</strong> — {item.status} — {new Date(item.scheduled).toLocaleString()}</li>)}</ul> : <div className="empty-state"><h2>No scheduled posts</h2><p>Approved posts will appear here once scheduled.</p></div>}
+      </div>
+    </div>
+  )
+}
+
+function PublishedFailedActivityPage() {
+  const [items] = useState<Array<{ id: string; title: string; status: string; providerStatus: string }>>([
+    { id: 'activity-1', title: 'Verified neighborhood business post', status: 'published', providerStatus: 'publisher_not_configured' },
+    { id: 'activity-2', title: 'Delayed campaign announcement', status: 'failed', providerStatus: 'provider_error' },
+  ])
+
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Publishing</p><h1>Published/Failed Activity</h1></div></div>
+      <div className="panel table-panel">
+        <table className="data-table"><thead><tr><th>Title</th><th>Status</th><th>Provider status</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{item.title}</td><td>{item.status}</td><td>{item.providerStatus}</td></tr>)}</tbody></table>
+      </div>
+    </div>
+  )
+}
+
+function InboundActivityPage() {
+  const webhook = normalizeProviderWebhook({ object: 'page', type: 'messages', entry: [{ id: 'evt-123' }], page_id: 'page-1', account_id: 'acct-1' })
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Inbound</p><h1>Inbound Activity</h1></div></div>
+      <div className="panel">
+        <h2>Webhook data</h2>
+        <p><strong>Provider:</strong> {webhook.provider}</p>
+        <p><strong>Event type:</strong> {webhook.eventType}</p>
+        <p><strong>Event ID:</strong> {webhook.eventId ?? 'pending'}</p>
+        <p><strong>Status:</strong> {webhook.status}</p>
+      </div>
+    </div>
+  )
+}
+
+function ConnectionHealthPage() {
+  const status = getSecureProviderStatus()
+  const destinations = getSecureDestinationSummary()
+
+  return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Diagnostics</p><h1>Connection Health</h1></div></div>
+      <div className="panel">
+        <h2>Provider state</h2>
+        <p><strong>State:</strong> {status.state}</p>
+        <p><strong>Last successful provider check:</strong> {status.lastSuccessfulProviderCheck ?? 'not available yet'}</p>
+        <p><strong>Safe metadata:</strong> {JSON.stringify(status.safeMetadata)}</p>
+        <p><strong>Next action:</strong> {status.reason}</p>
+      </div>
+      <div className="panel" style={{ marginTop: '1rem' }}>
+        <h2>Destinations</h2>
+        <ul>{destinations.length ? destinations.map((destination) => <li key={destination.id}>{destination.name} — {destination.connectionState}</li>) : <li>No destinations available until Meta config is complete.</li>}</ul>
       </div>
     </div>
   )

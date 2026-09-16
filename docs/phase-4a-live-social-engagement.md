@@ -80,6 +80,24 @@ The implementation does not mark a provider as connected unless the provider ret
 - RLS and tenant scoping remain enforced at the database layer.
 - Every function and job records actor attribution via the server-side session or service path.
 
+## Server-side pattern selected for Phase 4A.1
+
+This repository uses the Netlify Functions boundary for the secure provider facade. The browser calls Netlify endpoints such as `/.netlify/functions/social-provider` and receives only normalized, safe status objects. The browser does not access environment variables or provider secrets directly. The server-side function owns all secret reads, signature verification, and provider normalization.
+
+### Function inventory
+
+- `netlify/functions/social-provider.mjs` — connection status, account discovery, capability discovery, publish gating, status retrieval, and webhook validation
+- `netlify/functions/social-webhook.mjs` — Meta verification challenge handling and signed webhook processing
+
+### Secret-handling rules
+
+- Secrets are read only from server-side environment variables.
+- No `VITE_` variables contain Meta credentials.
+- No credentials are persisted in `localStorage` or `sessionStorage`.
+- No credentials are embedded in URLs or logs.
+- Full provider payloads are never returned to the browser.
+- The browser never asserts provider success; live publish results remain server-controlled and blocked until the server verifies a safe connection.
+
 ## Required environment variables
 
 The application and deployment require the following values, configured by Danielle and not committed to the repo:
@@ -95,6 +113,18 @@ The application and deployment require the following values, configured by Danie
 - `VITE_SUPABASE_ANON_KEY`
 
 No real values should be committed to this repository.
+
+## Disconnected behavior and safe fallback
+
+Without server-side credentials, the provider boundary returns safe normalized results such as:
+
+- configuration_required
+- disconnected
+- permission_limited
+- reconnect_required
+- provider_error
+
+The browser sees only the safe normalized result, never provider secrets or raw provider payloads. Live Meta connectivity is not claimed by the repository, and a publish attempt remains blocked until a verified server-side connection is configured.
 
 ## Connection steps Danielle must perform
 
@@ -179,6 +209,19 @@ Phase 4E: normative governance, administration, and launch
 - No false success reporting
 - Migration and verifier parsing
 - Security regression checks for the completed 3F release
+
+## Webhook verification design
+
+The webhook boundary validates the Meta `x-hub-signature-256` HMAC when configured, rejects invalid signatures, extracts a provider event ID, stores a deduplication boundary, and ignores unsupported or incomplete payloads without inferring D9 affiliation or membership. A challenge request is accepted only when the verification token matches the secure server-side configuration.
+
+## Remaining Phase 4A.2–4A.4 work
+
+Phase 4A.1 is the secure server-side foundation only. The remaining dependency work includes:
+
+- database enforcement for provider connection records and publishing job transitions
+- server-side policy and role enforcement tied to the authenticated session
+- full content approval and reapproval enforcement with content hash/version tracking
+- live provider integration and verification in the authorized deployment environment
 
 ## Migration and verifier instructions
 

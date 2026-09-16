@@ -29,6 +29,25 @@ Confirmed live results:
 
 Milestone 1 completion criteria are therefore met for the implemented foundation and live auth flow in this release.
 
+## Milestone 4 roadmap
+
+The current release scope is intentionally narrowed to the five-phase Milestone 4 roadmap:
+
+- Phase 4A — Live Social Engagement Connections
+- Phase 4B — Brilliant Directories Membership Handoff and Conversion Closure
+- Phase 4C — Analytics Foundation and Performance Intelligence
+- Phase 4D — Predictive and Prescriptive Intelligence
+- Phase 4E — Normative Governance, Administration and Launch
+
+The following features remain explicitly removed from scope and are not represented as active roadmap items in this repository:
+
+- marketplace
+- opportunity and referral matching
+- membership AI agents
+- membership-plan management
+
+Phase 4B treats Brilliant Directories as the future membership system of record, while the social and engagement work remains limited to controlled provider-safe publishing and human approval workflows.
+
 ## Local development
 
 ```bash
